@@ -267,6 +267,83 @@
   .cover-dark .muted { color: rgba(245, 240, 235, 0.5); }
   .cover-dark .eyebrow { color: rgba(245, 240, 235, 0.35); }
 
+  /* ─ v2 Two-axis alignment ───────────────────────────────────── */
+
+  section[data-align="center"] .text-block,
+  section[data-align="center"] > h1,
+  section[data-align="center"] > h2,
+  section[data-align="center"] > ul,
+  section[data-align="center"] > p,
+  section[data-align="center"] .stack-block,
+  section[data-align="center"] .image-caption {
+    text-align: center;
+  }
+  section[data-align="right"] .text-block,
+  section[data-align="right"] > h1,
+  section[data-align="right"] > h2,
+  section[data-align="right"] > ul,
+  section[data-align="right"] > p,
+  section[data-align="right"] .stack-block,
+  section[data-align="right"] .image-caption {
+    text-align: right;
+  }
+  /* When centered/right-aligned, hide bullet markers and reset padding so
+     bullets don't look offset. */
+  section[data-align="center"] ul.bullets > li,
+  section[data-align="right"]  ul.bullets > li {
+    padding-left: 0;
+    max-width: none;
+  }
+  section[data-align="center"] ul.bullets > li::before,
+  section[data-align="right"]  ul.bullets > li::before { display: none; }
+  section[data-align="center"] ul.bullets { align-items: center; }
+  section[data-align="right"]  ul.bullets { align-items: flex-end; }
+
+  /* Vertical alignment of slide content (column-flex sections) */
+  section[data-valign="top"]    { justify-content: flex-start; }
+  section[data-valign="center"] { justify-content: center; }
+  section[data-valign="bottom"] { justify-content: flex-end; }
+
+  /* Vertical alignment within split row */
+  .split[data-valign="top"]    { align-items: flex-start; }
+  .split[data-valign="center"] { align-items: center; }
+  .split[data-valign="bottom"] { align-items: flex-end; }
+
+  /* ─ v2 :::stack — vertical block container ───────────────── */
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    width: 100%;
+  }
+  .stack[data-gap="small"]  { gap: 16px; }
+  .stack[data-gap="medium"] { gap: 32px; }
+  .stack[data-gap="large"]  { gap: 64px; }
+  .stack-block { width: 100%; }
+
+  /* ─ v2 :::image — large image with optional caption(s) ────── */
+  .image-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    width: 100%;
+  }
+  .image-stage .image-main {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
+  .image-stage .image-main img {
+    max-width: 100%;
+    max-height: 70vh;
+    object-fit: contain;
+    border-radius: var(--radius);
+  }
+  .image-stage .image-caption {
+    max-width: 1400px;
+  }
+
 </style>
 </head>
 <body>

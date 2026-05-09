@@ -279,6 +279,79 @@ function dataLabel(label: string | undefined): string {
   return label ? ` data-label="${escAttr(label)}"` : '';
 }
 
+/** Build `data-align` / `data-valign` attribute string from a directive's attrs. */
+function alignAttrs(attrs: Record<string, any>): string {
+  const parts: string[] = [];
+  const align = attrs.align;
+  const valign = attrs.valign;
+  if (align && ['left', 'center', 'right'].includes(align)) {
+    parts.push(`data-align="${align}"`);
+  }
+  if (valign && ['top', 'center', 'bottom'].includes(valign)) {
+    parts.push(`data-valign="${valign}"`);
+  }
+  return parts.length ? ' ' + parts.join(' ') : '';
+}
+
+/** Split a node's children into block groups separated by thematic breaks (---). */
+function splitByThematicBreak(children: any[]): any[][] {
+  const groups: any[][] = [[]];
+  for (const c of children) {
+    if (c.type === 'thematicBreak') {
+      groups.push([]);
+    } else {
+      groups[groups.length - 1].push(c);
+    }
+  }
+  return groups.filter((g) => g.length > 0);
+}
+
+/** Detect if children contain any thematic break (= v2 composition mode). */
+function hasThematicBreak(children: any[]): boolean {
+  return children.some((c) => c.type === 'thematicBreak');
+}
+
+/** Detect if a block group is "media-only" (image-only) vs text. */
+function isMediaOnly(children: any[]): boolean {
+  if (children.length === 0) return false;
+  return children.every((c) => {
+    if (c.type === 'image') return true;
+    if (c.type === 'paragraph') {
+      return (c.children ?? []).every((x: any) => x.type === 'image');
+    }
+    return false;
+  });
+}
+
+/** Render a generic block node (heading / list / paragraph / image-paragraph). */
+function renderGenericBlock(node: any): string {
+  switch (node.type) {
+    case 'heading': {
+      const h = node as Heading;
+      if (h.depth === 1) {
+        return `<h1 class="h1" style="margin: 0 0 var(--gap-title);">${renderInline(h.children)}</h1>`;
+      }
+      return `<h${h.depth}>${renderInline(h.children)}</h${h.depth}>`;
+    }
+    case 'list':
+      return renderBullets(node as List);
+    case 'paragraph': {
+      const p = node as Paragraph;
+      // Image-only paragraph
+      if (p.children.length === 1 && p.children[0].type === 'image') {
+        return renderImageBlock(p.children[0] as Image);
+      }
+      return `<p class="body" style="font-size: var(--type-body); margin: 0 0 16px;">${renderInline(p.children)}</p>`;
+    }
+    case 'image':
+      return renderImageBlock(node as Image);
+    case 'math':
+      return renderBlock(node);
+    default:
+      return '';
+  }
+}
+
 // ───────────────────────── slide renderers ─────────────────────────
 
 function renderSlide(d: ContainerDirective, fm: Frontmatter): string | null {
@@ -292,9 +365,11 @@ function renderSlide(d: ContainerDirective, fm: Frontmatter): string | null {
     case 'charts':     return renderCharts(d, label);
     case 'disclaimer': return renderDisclaimer(d, label);
     case 'thanks':     return renderThanks(d, label, fm);
+    case 'image':      return renderImageSlide(d, label);
+    case 'stack':      return renderStack(d, label);
     default:
       throw new EngineError(
-        `Unknown slide directive: ":::${d.name}". Valid: cover, split, bullets, divider, stats, charts, disclaimer, thanks.`,
+        `Unknown slide directive: ":::${d.name}". Valid: cover, split, bullets, divider, stats, charts, disclaimer, thanks, image, stack.`,
         { line: d.position?.start.line },
       );
   }
@@ -330,14 +405,47 @@ function renderImageBlock(img: Image, isPhoto = true): string {
 }
 
 function renderSplit(d: ContainerDirective, label: string | undefined): string {
+  const attrs = d.attributes ?? {};
+  const sectionAttrs = alignAttrs(attrs);
+  const valign = attrs.valign as string | undefined;
+  const splitValign = valign && ['top', 'center', 'bottom'].includes(valign)
+    ? ` data-valign="${valign}"` : '';
+
+  // v2 mode: two blocks separated by `---`
+  if (hasThematicBreak(d.children)) {
+    const groups = splitByThematicBreak(d.children);
+    if (groups.length < 2) {
+      throw new EngineError(
+        `:::split with --- requires at least 2 content blocks (got ${groups.length}).`,
+        { line: d.position?.start.line },
+      );
+    }
+    const renderColumn = (children: any[]) => {
+      const isMedia = isMediaOnly(children);
+      const html = children.map(renderGenericBlock).join('\n        ');
+      const cls = isMedia ? 'media-block' : 'text-block';
+      const style = isMedia ? ' style="min-height: 500px;"' : '';
+      return `<div class="${cls}"${style}>\n        ${html}\n      </div>`;
+    };
+    const left = renderColumn(groups[0]);
+    const right = renderColumn(groups[1]);
+    return `<section${dataLabel(label)}${sectionAttrs}>
+    <div class="split"${splitValign}>
+      ${left}
+      ${right}
+    </div>
+  </section>`;
+  }
+
+  // Legacy mode: H1 + UL → text-block, image → media-block
   const heading = findHeading(d.children);
   const list = findFirstList(d.children);
   const img = findFirstImage(d.children);
   const titleHtml = heading ? renderInline(heading.children) : '';
   const listHtml = list ? renderBullets(list) : '';
   const imgHtml = img ? renderImageBlock(img) : '';
-  return `<section${dataLabel(label)}>
-    <div class="split">
+  return `<section${dataLabel(label)}${sectionAttrs}>
+    <div class="split"${splitValign}>
       <div class="text-block">
         <h1 class="h1" style="margin: 0 0 var(--gap-title);">${titleHtml}</h1>
         ${listHtml}
@@ -349,12 +457,61 @@ function renderSplit(d: ContainerDirective, label: string | undefined): string {
   </section>`;
 }
 
+function renderImageSlide(d: ContainerDirective, label: string | undefined): string {
+  const attrs = d.attributes ?? {};
+  // image slide defaults to center/center if user didn't specify
+  const sectionAttrs = alignAttrs({ align: attrs.align ?? 'center', valign: attrs.valign ?? 'center' });
+  const groups = hasThematicBreak(d.children)
+    ? splitByThematicBreak(d.children)
+    : [d.children];
+
+  const blocksHtml = groups.map((group) => {
+    if (isMediaOnly(group)) {
+      const img = findFirstImage(group);
+      if (!img) return '';
+      const src = escAttr(img.url);
+      const alt = escAttr(img.alt ?? '');
+      return `<div class="image-main"><img src="${src}" alt="${alt}" style="max-width: 100%; max-height: 70vh; object-fit: contain; display: block; margin: 0 auto; filter: grayscale(0.1) contrast(1.02);" /></div>`;
+    }
+    const html = group.map(renderGenericBlock).join('\n      ');
+    return `<div class="image-caption" style="font-size: var(--type-caption); color: var(--fg-muted); text-align: center; max-width: 1400px; margin: 0 auto;">${html}</div>`;
+  }).join('\n    ');
+
+  return `<section${dataLabel(label)}${sectionAttrs}>
+    <div class="image-stage">
+      ${blocksHtml}
+    </div>
+  </section>`;
+}
+
+function renderStack(d: ContainerDirective, label: string | undefined): string {
+  const attrs = d.attributes ?? {};
+  const sectionAttrs = alignAttrs(attrs);
+  const gap = (attrs.gap as string | undefined) ?? 'medium';
+  const gapAttr = ['small', 'medium', 'large'].includes(gap) ? ` data-gap="${gap}"` : '';
+
+  const groups = hasThematicBreak(d.children)
+    ? splitByThematicBreak(d.children)
+    : [d.children];
+
+  const blocksHtml = groups.map((group) => {
+    const html = group.map(renderGenericBlock).join('\n      ');
+    return `<div class="stack-block">${html}</div>`;
+  }).join('\n    ');
+
+  return `<section${dataLabel(label)}${sectionAttrs}>
+    <div class="stack"${gapAttr}>
+      ${blocksHtml}
+    </div>
+  </section>`;
+}
+
 function renderBulletsOnly(d: ContainerDirective, label: string | undefined): string {
   const heading = findHeading(d.children);
   const list = findFirstList(d.children);
   const titleHtml = heading ? renderInline(heading.children) : '';
   const listHtml = list ? renderBullets(list) : '';
-  return `<section${dataLabel(label)}>
+  return `<section${dataLabel(label)}${alignAttrs(d.attributes ?? {})}>
     <h1 class="h1" style="margin: 0 0 var(--gap-title);">${titleHtml}</h1>
     ${listHtml}
   </section>`;
@@ -371,7 +528,7 @@ function renderDivider(d: ContainerDirective, label: string | undefined): string
   else if (para) title = renderInline(para.children);
   const numStr = String(n).padStart(2, '0');
   const cls = isPrimary ? 'section-divider primary' : 'section-divider';
-  return `<section class="${cls}"${dataLabel(label)}>
+  return `<section class="${cls}"${dataLabel(label)}${alignAttrs(attrs)}>
     <div class="sec-label">Section ${numStr}</div>
     <h2 class="h1">${title}</h2>
   </section>`;
@@ -396,7 +553,7 @@ function renderStats(d: ContainerDirective, label: string | undefined): string {
           <div style="font-size: 24px; color: var(--fg-muted); font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em; text-transform: uppercase;">${lbl}</div>
         </div>`;
   }).join('\n        ');
-  return `<section${dataLabel(label)}>
+  return `<section${dataLabel(label)}${alignAttrs(d.attributes ?? {})}>
     <div class="split">
       <div class="text-block">
         <h1 class="h1" style="margin: 0 0 var(--gap-title);">${titleHtml}</h1>
@@ -425,7 +582,7 @@ function renderCharts(d: ContainerDirective, label: string | undefined): string 
           <img src="${src}" alt="${alt}" style="width: 100%; height: auto; border-radius: var(--radius); filter: contrast(1.05);" />
         </div>`;
   }).join('\n        ');
-  return `<section${dataLabel(label)}>
+  return `<section${dataLabel(label)}${alignAttrs(d.attributes ?? {})}>
     <h1 class="h1" style="margin: 0 0 var(--gap-title);">${titleHtml}</h1>
     <div class="split" style="align-items: center; gap: 60px;">
       <div class="text-block" style="flex: 1;">
@@ -468,7 +625,7 @@ function renderDisclaimer(d: ContainerDirective, label: string | undefined): str
       * ${renderInline(note.children as PhrasingContent[])}
     </div>`
     : '';
-  return `<section${dataLabel(label)}>
+  return `<section${dataLabel(label)}${alignAttrs(d.attributes ?? {})}>
     <h1 class="h1" style="margin: 0 0 var(--gap-title);">${titleHtml}</h1>
     ${listHtml}
     ${noteHtml}

@@ -24,7 +24,6 @@ const dropOverlay = document.getElementById('drop-overlay');
 const swatches = document.querySelectorAll('.swatch');
 
 // State
-let primaryOverride = '';     // empty = frontmatter follows
 const assetMap = new Map();   // filename → dataURL
 let lastHtml = '';            // last rendered HTML (with original ./assets/ paths)
 let lastTitle = 'deck';
@@ -52,7 +51,7 @@ async function convert() {
     const res = await fetch('/api/convert', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ markdown: md, primaryOverride }),
+      body: JSON.stringify({ markdown: md }),
     });
 
     if (!res.ok) {
@@ -69,23 +68,19 @@ async function convert() {
     const previewHtml = injectAssets(html);
     preview.srcdoc = previewHtml;
 
-    // Sync swatch active state to the EFFECTIVE primary (override wins,
-    // else frontmatter, else default). The reset swatch (empty data-color)
-    // never gets active.
+    // Sync swatch active state to the frontmatter primary.
+    // The reset swatch (empty data-color) never gets active.
     const fmPrimary = frontmatter?.primary || 'terracotta';
-    const effective = primaryOverride || fmPrimary;
     swatches.forEach((sw) => {
       const c = sw.dataset.color;
-      sw.classList.toggle('active', !!c && c === effective);
+      sw.classList.toggle('active', !!c && c === fmPrimary);
     });
 
     slideCountEl.textContent = `${slideCount} 슬라이드`;
     convertTimeEl.textContent = `변환 ${elapsedMs}ms`;
     errorEl.textContent = '';
     downloadHtmlBtn.disabled = false;
-    primaryStatusEl.textContent = primaryOverride
-      ? `primary: ${primaryOverride} (override)`
-      : `primary: ${fmPrimary} (frontmatter)`;
+    primaryStatusEl.textContent = `primary: ${fmPrimary}`;
   } catch (e) {
     errorEl.textContent = `네트워크 오류: ${e.message}`;
   }
@@ -103,12 +98,59 @@ editor.addEventListener('input', scheduleConvert);
 
 // ─ Primary swatches ──────────────────────────────
 
+// Swatch click → update frontmatter `primary:` in MD body.
+// Empty data-color (reset swatch) → remove the primary line entirely.
 swatches.forEach((sw) => {
   sw.addEventListener('click', () => {
-    primaryOverride = sw.dataset.color || '';
-    convert();   // active state will sync from response's effective primary
+    const color = sw.dataset.color || '';
+    setFrontmatterPrimary(color || null);
+    localStorage.setItem(SAVED_KEY, editor.value);
+    convert();
   });
 });
+
+function setFrontmatterPrimary(name) {
+  let md = editor.value;
+  const hasFrontmatter = /^---\r?\n/.test(md);
+
+  if (!hasFrontmatter) {
+    // No preamble yet — inject one if we're setting a value.
+    if (name) {
+      md = `---\nprimary: ${name}\n---\n\n${md}`;
+      editor.value = md;
+    }
+    return;
+  }
+
+  const lines = md.split('\n');
+  let endIdx = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i] === '---' || lines[i] === '---\r') { endIdx = i; break; }
+  }
+  if (endIdx < 0) return;
+
+  let primaryIdx = -1;
+  for (let i = 1; i < endIdx; i++) {
+    if (/^\s*primary\s*:/.test(lines[i])) { primaryIdx = i; break; }
+  }
+
+  if (name) {
+    if (primaryIdx >= 0) {
+      // Preserve key + alignment; replace value.
+      lines[primaryIdx] = lines[primaryIdx].replace(
+        /^(\s*primary\s*:\s*).*$/,
+        `$1${name}`,
+      );
+    } else {
+      lines.splice(endIdx, 0, `primary: ${name}`);
+    }
+  } else {
+    // Remove the primary line.
+    if (primaryIdx >= 0) lines.splice(primaryIdx, 1);
+  }
+
+  editor.value = lines.join('\n');
+}
 
 // ─ Image upload (base64 in browser) ─────────────
 

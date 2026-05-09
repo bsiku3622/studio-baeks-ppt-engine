@@ -14,15 +14,16 @@
 html, body {
   margin: 0;
   padding: 0;
-  height: 100vh;
   font-family: 'Pretendard', 'Apple SD Gothic Neo', system-ui, sans-serif;
   color: var(--fg);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
-  overflow: hidden;
 }
 
-body {
+/* Editor page — full viewport, no document scroll */
+body.editor-body {
+  height: 100vh;
+  overflow: hidden;
   display: grid;
   grid-template-rows: auto auto 1fr auto;
 }

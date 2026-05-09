@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="./style.css" />
 </head>
-<body>
+<body class="editor-body">
   <header>
     <div class="brand">
       <h1>Studio Baeks PPT Engine</h1>
@@ -24,10 +24,10 @@
   </header>
 
   <div id="toolbar">
-    <div id="primary-picker" title="미리보기 색상 — MD 본문은 안 건드림">
+    <div id="primary-picker" title="클릭하면 MD frontmatter primary 값을 갱신">
       <span class="picker-label">PRIMARY</span>
       <div class="swatches">
-        <button class="swatch active" data-color="" title="frontmatter 따름" style="background: linear-gradient(135deg, #888 50%, transparent 50%);"></button>
+        <button class="swatch" data-color="" title="primary 라인 제거 (default)" style="background: linear-gradient(135deg, #888 50%, transparent 50%);"></button>
         <button class="swatch" data-color="terracotta" title="terracotta" style="background:oklch(0.56 0.165 30)"></button>
         <button class="swatch" data-color="rust"       title="rust"       style="background:oklch(0.56 0.155 18)"></button>
         <button class="swatch" data-color="mustard"    title="mustard"    style="background:oklch(0.56 0.140 75)"></button>

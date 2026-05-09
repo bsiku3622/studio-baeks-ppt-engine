@@ -73,14 +73,34 @@ export function convertMd(md: string, opts: ConvertOptions = {}): ConvertResult 
   for (const node of tree.children) {
     if (node.type === 'yaml') {
       const yamlStartLine = node.position?.start.line ?? 1;
+      let raw: any;
       try {
-        fm = (parseYaml((node as Yaml).value) ?? {}) as Frontmatter;
+        raw = parseYaml((node as Yaml).value) ?? {};
       } catch (e: any) {
         const yamlLine = e?.linePos?.[0]?.line ?? 1;
         throw new EngineError(`Frontmatter YAML 파싱 실패: ${e.message}`, {
           line: yamlStartLine + yamlLine,
         });
       }
+      // Validate & coerce: each field should be string-ish.
+      // Object/array values (e.g., from typing `{{}}`) → clear error.
+      const mdLines = md.split('\n');
+      for (const k of Object.keys(raw)) {
+        const v = raw[k];
+        if (v == null) { delete raw[k]; continue; }
+        if (typeof v === 'string') continue;
+        if (typeof v === 'number' || typeof v === 'boolean') {
+          raw[k] = String(v);
+          continue;
+        }
+        // Object / array — invalid for our schema.
+        const idx = mdLines.findIndex((l) => new RegExp(`^\\s*${k}\\s*:`).test(l));
+        throw new EngineError(
+          `Frontmatter 필드 "${k}"의 값이 문자열이 아닙니다. {}/[] 같은 YAML 객체·배열은 지원하지 않음.`,
+          { line: idx >= 0 ? idx + 1 : undefined },
+        );
+      }
+      fm = raw as Frontmatter;
       continue;
     }
     if (node.type === 'containerDirective') {
@@ -125,11 +145,13 @@ export function convertMd(md: string, opts: ConvertOptions = {}): ConvertResult 
 
 // ───────────────────────── helpers ─────────────────────────
 
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function escHtml(s: unknown): string {
+  const str = typeof s === 'string' ? s : (s == null ? '' : String(s));
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-function escAttr(s: string): string {
-  return s
+function escAttr(s: unknown): string {
+  const str = typeof s === 'string' ? s : (s == null ? '' : String(s));
+  return str
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')

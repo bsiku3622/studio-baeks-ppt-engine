@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>{{TITLE}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css" />
+
+<style>
+  :root {
+    /* Studio UI tokens — PPT layer */
+    --sb-color-primary-s500: {{PRIMARY_S500}};
+    --sb-color-primary-s600: {{PRIMARY_S600}};
+    --fg: #1A1A1A;
+    --fg-muted: #8A8580;
+    --fg-subtle: #BFBAB3;
+    --bg-canvas: #FAF9F7;
+    --bg-panel: #F2EFEA;
+    --rule: #E5E1DA;
+
+    /* Type scale — projection sizing */
+    --type-display: 96px;
+    --type-h1: 72px;
+    --type-h2: 44px;
+    --type-body: 32px;
+    --type-caption: 24px;
+    --type-eyebrow: 22px;
+    --type-mega: 220px;
+
+    /* Spacing */
+    --pad-x: 120px;
+    --pad-top: 100px;
+    --pad-bottom: 100px;
+    --gap-title: 56px;
+    --gap-bullet: 28px;
+    --gap-col: 80px;
+
+    --radius: 8px;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    font-family: 'Apple SD Gothic Neo', 'Pretendard', 'Inter', system-ui, -apple-system, sans-serif;
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  deck-stage { background: #000; }
+
+  /* Slide base */
+  section {
+    background: var(--bg-canvas);
+    color: var(--fg);
+    padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    font-family: 'Apple SD Gothic Neo', 'Pretendard', 'Inter', sans-serif;
+    letter-spacing: -0.01em;
+  }
+
+  /* Type roles */
+  .display { font-size: var(--type-display); font-weight: 800; line-height: 1.05; letter-spacing: -0.035em; }
+  .h1 { font-size: var(--type-h1); font-weight: 700; line-height: 1.1; letter-spacing: -0.025em; }
+  .h2 { font-size: var(--type-h2); font-weight: 600; line-height: 1.2; letter-spacing: -0.02em; }
+  .body { font-size: var(--type-body); font-weight: 500; line-height: 1.45; }
+  .caption { font-size: var(--type-caption); font-weight: 400; color: var(--fg-muted); letter-spacing: 0; }
+  .eyebrow {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: var(--type-eyebrow);
+    font-weight: 500;
+    color: var(--fg-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .mega { font-size: var(--type-mega); font-weight: 600; line-height: 0.95; letter-spacing: -0.05em; }
+
+  .primary { color: var(--sb-color-primary-s500); }
+  .muted { color: var(--fg-muted); }
+
+  /* Header strip */
+  .slide-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 24px;
+    margin-bottom: var(--gap-title);
+  }
+  .slide-head .lhs { display: flex; gap: 32px; align-items: baseline; }
+  .slide-head .topic { font-family: 'JetBrains Mono', monospace; font-size: 24px; color: var(--fg-muted); letter-spacing: 0.08em; text-transform: uppercase; }
+  .slide-head .num { font-family: 'JetBrains Mono', monospace; font-size: 24px; color: var(--fg-subtle); letter-spacing: 0.08em; }
+
+  /* Bullets — no dots, position-based emphasis */
+  ul.bullets {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-bullet);
+  }
+  ul.bullets > li {
+    font-size: var(--type-body);
+    font-weight: 500;
+    line-height: 1.4;
+    padding-left: 36px;
+    position: relative;
+    max-width: 1400px;
+  }
+  ul.bullets > li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.7em;
+    width: 16px;
+    height: 1px;
+    background: var(--fg);
+  }
+  ul.bullets > li.muted-item { color: var(--fg-muted); }
+  ul.bullets > li.muted-item::before { background: var(--fg-muted); }
+  ul.bullets > li.key-item { color: var(--fg); font-weight: 700; }
+  ul.bullets > li.key-item::before { background: var(--fg); }
+
+  /* Two-column layout */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--gap-col);
+    align-content: start;
+  }
+
+  /* Split layout */
+  .split {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-col);
+  }
+  .split > .text-block { flex: 1.05; min-width: 0; }
+  .split > .media-block { flex: 0.95; min-width: 0; }
+  .media-block.photo {
+    aspect-ratio: 4 / 3;
+    background-size: cover;
+    background-position: center;
+    background-color: var(--bg-soft);
+    filter: grayscale(0.15) contrast(1.02);
+  }
+  .col-block .col-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    color: var(--fg-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  /* Image / chart placeholder */
+  .placeholder {
+    background-image: repeating-linear-gradient(
+      135deg,
+      #ECE7DF 0px,
+      #ECE7DF 2px,
+      #F2EFEA 2px,
+      #F2EFEA 14px
+    );
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    color: var(--fg-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    letter-spacing: 0.05em;
+    text-align: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+  .placeholder .ph-tag { text-transform: uppercase; font-size: 24px; color: var(--fg-subtle); letter-spacing: 0.1em; }
+  .placeholder { font-size: 24px; }
+
+  /* Cover */
+  .cover {
+    padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+    justify-content: space-between;
+  }
+  .cover .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .cover .center { display: flex; flex-direction: column; gap: 36px; }
+  .cover .meta { display: flex; gap: 64px; color: var(--fg-muted); font-family: 'JetBrains Mono', monospace; font-size: 22px; letter-spacing: 0.05em; }
+
+  /* Section divider */
+  .section-divider {
+    background: #111;
+    color: #F5F0EB;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    gap: 28px;
+  }
+  .section-divider .h1 { color: #F5F0EB; margin: 0; }
+  .section-divider .sec-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    color: rgba(245, 240, 235, 0.35);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .section-divider.primary { background: var(--sb-color-primary-s500); }
+
+  /* Stat row */
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 64px;
+    border-top: 1px solid var(--rule);
+    padding-top: 48px;
+  }
+  .stat-row .stat .num {
+    font-size: 88px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.03em;
+  }
+  .stat-row .stat .lbl {
+    margin-top: 16px;
+    font-size: 24px;
+    color: var(--fg-muted);
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  /* Footer */
+  .slide-foot {
+    margin-top: auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-top: 32px;
+    border-top: 1px solid var(--rule);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 24px;
+    color: var(--fg-subtle);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  /* Cover dark (inverted) */
+  .cover-dark {
+    background: #1C1917;
+    color: #F5F0EB;
+    align-items: center;
+    text-align: center;
+  }
+  .cover-dark .muted { color: rgba(245, 240, 235, 0.5); }
+  .cover-dark .eyebrow { color: rgba(245, 240, 235, 0.35); }
+
+</style>
+</head>
+<body>
+
+<deck-stage width="1920" height="1080">
+
+{{SLIDES}}
+
+</deck-stage>
+
+<script src="{{DECK_STAGE_SRC}}"></script>
+
+</body>
+</html>

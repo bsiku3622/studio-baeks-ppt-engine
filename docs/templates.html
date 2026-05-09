@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>슬라이드 템플릿 카탈로그</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet" />
+
+<style>
+  :root {
+    /* Studio UI tokens — PPT layer */
+    --sb-color-primary-s500: #C8442A;
+    --sb-color-primary-s600: #A8331E;
+    --fg: #1A1A1A;
+    --fg-muted: #8A8580;
+    --fg-subtle: #BFBAB3;
+    --bg-canvas: #FAF9F7;
+    --bg-panel: #F2EFEA;
+    --rule: #E5E1DA;
+
+    /* Type scale — projection sizing */
+    --type-display: 96px;
+    --type-h1: 72px;
+    --type-h2: 44px;
+    --type-body: 32px;
+    --type-caption: 24px;
+    --type-eyebrow: 22px;
+    --type-mega: 220px;
+
+    /* Spacing */
+    --pad-x: 120px;
+    --pad-top: 100px;
+    --pad-bottom: 100px;
+    --gap-title: 56px;
+    --gap-bullet: 28px;
+    --gap-col: 80px;
+
+    --radius: 8px;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    font-family: 'Apple SD Gothic Neo', 'Pretendard', 'Inter', system-ui, -apple-system, sans-serif;
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  deck-stage { background: #000; }
+
+  /* Slide base */
+  section {
+    background: var(--bg-canvas);
+    color: var(--fg);
+    padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    font-family: 'Apple SD Gothic Neo', 'Pretendard', 'Inter', sans-serif;
+    letter-spacing: -0.01em;
+  }
+
+  /* Type roles */
+  .display { font-size: var(--type-display); font-weight: 800; line-height: 1.05; letter-spacing: -0.035em; }
+  .h1 { font-size: var(--type-h1); font-weight: 700; line-height: 1.1; letter-spacing: -0.025em; }
+  .h2 { font-size: var(--type-h2); font-weight: 600; line-height: 1.2; letter-spacing: -0.02em; }
+  .body { font-size: var(--type-body); font-weight: 500; line-height: 1.45; }
+  .caption { font-size: var(--type-caption); font-weight: 400; color: var(--fg-muted); letter-spacing: 0; }
+  .eyebrow {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: var(--type-eyebrow);
+    font-weight: 500;
+    color: var(--fg-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .mega { font-size: var(--type-mega); font-weight: 600; line-height: 0.95; letter-spacing: -0.05em; }
+
+  .primary { color: var(--sb-color-primary-s500); }
+  .muted { color: var(--fg-muted); }
+
+  /* Bullets */
+  ul.bullets {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-bullet);
+  }
+  ul.bullets > li {
+    font-size: var(--type-body);
+    font-weight: 500;
+    line-height: 1.4;
+    padding-left: 36px;
+    position: relative;
+    max-width: 1400px;
+  }
+  ul.bullets > li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.7em;
+    width: 16px;
+    height: 1px;
+    background: var(--fg);
+  }
+  ul.bullets > li.muted-item { color: var(--fg-muted); }
+  ul.bullets > li.muted-item::before { background: var(--fg-muted); }
+  ul.bullets > li.key-item { color: var(--fg); font-weight: 700; }
+  ul.bullets > li.key-item::before { background: var(--fg); }
+
+  /* Split layout */
+  .split {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-col);
+  }
+  .split > .text-block { flex: 1.05; min-width: 0; }
+  .split > .media-block { flex: 0.95; min-width: 0; }
+
+  /* Image / chart placeholder — striped */
+  .placeholder {
+    background-image: repeating-linear-gradient(
+      135deg,
+      #ECE7DF 0px,
+      #ECE7DF 2px,
+      #F2EFEA 2px,
+      #F2EFEA 14px
+    );
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    color: var(--fg-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 24px;
+    letter-spacing: 0.05em;
+    text-align: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+  .placeholder .ph-tag { text-transform: uppercase; font-size: 24px; color: var(--fg-subtle); letter-spacing: 0.1em; }
+
+  /* Cover */
+  .cover {
+    padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+    justify-content: space-between;
+  }
+  .cover .center { display: flex; flex-direction: column; gap: 36px; }
+
+  /* Section divider */
+  .section-divider {
+    background: #111;
+    color: #F5F0EB;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    gap: 28px;
+  }
+  .section-divider .h1 { color: #F5F0EB; margin: 0; }
+  .section-divider .sec-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    color: rgba(245, 240, 235, 0.35);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .section-divider.primary { background: var(--sb-color-primary-s500); }
+
+  /* Cover dark */
+  .cover-dark {
+    background: #1C1917;
+    color: #F5F0EB;
+    align-items: center;
+    text-align: center;
+  }
+  .cover-dark .muted { color: rgba(245, 240, 235, 0.5); }
+
+  /* === 가이드 전용 ─ 템플릿 뱃지 + 소스 토글 === */
+  .tpl-badge {
+    position: absolute;
+    top: 32px;
+    left: var(--pad-x);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    color: var(--fg-subtle);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    z-index: 5;
+    display: flex;
+    gap: 16px;
+    align-items: baseline;
+  }
+  .tpl-badge .id { color: var(--sb-color-primary-s500); font-weight: 600; }
+  .tpl-badge .use { color: var(--fg-muted); text-transform: none; letter-spacing: 0.02em; }
+
+  .section-divider .tpl-badge { color: rgba(245,240,235,0.35); top: 24px; left: 48px; }
+  .section-divider .tpl-badge .id { color: #F5F0EB; }
+  .section-divider .tpl-badge .use { color: rgba(245,240,235,0.4); }
+
+  .cover-dark .tpl-badge { color: rgba(245,240,235,0.35); top: 24px; left: 48px; }
+  .cover-dark .tpl-badge .id { color: var(--sb-color-primary-s500); }
+  .cover-dark .tpl-badge .use { color: rgba(245,240,235,0.4); }
+
+  .tpl-source {
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    max-width: 1300px;
+    z-index: 10;
+  }
+  .tpl-source > summary {
+    cursor: pointer;
+    list-style: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    color: var(--fg-muted);
+    padding: 8px 14px;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--bg-canvas);
+    display: inline-block;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    user-select: none;
+  }
+  .tpl-source > summary::-webkit-details-marker { display: none; }
+  .tpl-source[open] > summary { background: var(--fg); color: var(--bg-canvas); border-color: var(--fg); }
+  .tpl-source pre {
+    margin-top: 12px;
+    margin-left: auto;
+    padding: 28px 32px;
+    background: #1C1917;
+    color: #E5E1DA;
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    max-height: 720px;
+    max-width: 1300px;
+    overflow: auto;
+    white-space: pre;
+  }
+  .tpl-source pre .tag { color: #FFA39E; }
+  .tpl-source pre .attr { color: #FFD666; }
+  .tpl-source pre .str { color: #95DE64; }
+
+  .section-divider .tpl-source > summary,
+  .cover-dark .tpl-source > summary {
+    background: rgba(245,240,235,0.08);
+    border-color: rgba(245,240,235,0.2);
+    color: rgba(245,240,235,0.7);
+  }
+
+  /* === 가이드 인덱스 슬라이드 (첫 슬라이드) === */
+  .tpl-index h1 { font-size: 88px; font-weight: 800; letter-spacing: -0.035em; line-height: 1; margin: 0 0 24px; }
+  .tpl-index .lead { font-size: 28px; color: var(--fg-muted); margin: 0 0 56px; max-width: 1200px; line-height: 1.5; }
+  .tpl-index ol { list-style: none; padding: 0; margin: 0; counter-reset: tpl; columns: 2; column-gap: 80px; }
+  .tpl-index ol li {
+    counter-increment: tpl;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: baseline;
+    gap: 24px;
+    break-inside: avoid;
+  }
+  .tpl-index ol li::before {
+    content: counter(tpl, decimal-leading-zero);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    color: var(--fg-subtle);
+    letter-spacing: 0.08em;
+  }
+  .tpl-index ol li .name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    color: var(--sb-color-primary-s500);
+    font-weight: 600;
+  }
+  .tpl-index ol li .desc { font-size: 22px; color: var(--fg); flex: 1; }
+
+  /* === 테마 피커 (가이드 페이지 전용 UI) === */
+  #theme-picker {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 9999;
+    background: rgba(28, 25, 23, 0.92);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(245, 240, 235, 0.15);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: rgba(245, 240, 235, 0.6);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    user-select: none;
+  }
+  #theme-picker .label { padding-right: 4px; }
+  #theme-picker .chips { display: flex; gap: 6px; align-items: center; }
+  #theme-picker button {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid rgba(245, 240, 235, 0.2);
+    cursor: pointer;
+    padding: 0;
+    transition: transform 120ms ease;
+  }
+  #theme-picker button:hover { transform: scale(1.15); }
+  #theme-picker button.active { border-color: #fff; }
+  #theme-picker input[type="color"] {
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+    padding: 0;
+  }
+  #theme-picker input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  #theme-picker input[type="color"]::-webkit-color-swatch { border-radius: 50%; border: 2px solid rgba(245, 240, 235, 0.2); }
+  #theme-picker code {
+    color: rgba(245, 240, 235, 0.85);
+    font-size: 11px;
+  }
+
+</style>
+</head>
+<body>
+
+<div id="theme-picker" title="primary color을 바꿔서 미리보기 — 실제 데크에서는 발표.md의 frontmatter primary 값을 바꾸면 됩니다">
+  <span class="label">PRIMARY</span>
+  <div class="chips">
+    <button data-c="oklch(0.56 0.165 30)"  data-d="oklch(0.46 0.1581 30)"  style="background:oklch(0.56 0.165 30)"  title="terracotta — default"></button>
+    <button data-c="oklch(0.56 0.155 18)"  data-d="oklch(0.46 0.1485 18)"  style="background:oklch(0.56 0.155 18)"  title="rust — error"></button>
+    <button data-c="oklch(0.56 0.140 75)"  data-d="oklch(0.46 0.1342 75)"  style="background:oklch(0.56 0.140 75)"  title="mustard — warning"></button>
+    <button data-c="oklch(0.56 0.110 130)" data-d="oklch(0.46 0.1054 130)" style="background:oklch(0.56 0.110 130)" title="sage — success"></button>
+    <button data-c="oklch(0.56 0.115 340)" data-d="oklch(0.46 0.1102 340)" style="background:oklch(0.56 0.115 340)" title="mauve"></button>
+    <button data-c="oklch(0.56 0.115 200)" data-d="oklch(0.46 0.1102 200)" style="background:oklch(0.56 0.115 200)" title="teal"></button>
+    <button data-c="oklch(0.56 0.080 235)" data-d="oklch(0.46 0.0766 235)" style="background:oklch(0.56 0.080 235)" title="sky — info"></button>
+    <button data-c="oklch(0.56 0.010 75)"  data-d="oklch(0.46 0.0096 75)"  style="background:oklch(0.56 0.010 75)"  title="stone — neutral"></button>
+    <input type="color" value="#C8442A" title="hex 직접 선택" />
+  </div>
+  <code id="theme-picker-value">terracotta</code>
+</div>
+
+<deck-stage width="1920" height="1080">
+
+  <!-- 00. 인덱스 -->
+  <section data-label="00 카탈로그 인덱스" class="tpl-index">
+    <h1>슬라이드 템플릿 카탈로그</h1>
+    <p class="lead">발표.md 시스템의 8가지 슬라이드 directive. 각 슬라이드의 우하단 <code>SHOW SOURCE</code> 토글로 작성용 MD 소스를 확인할 수 있다. 디자인 토큰·작성법은 <code>guide/how-to-use.md</code>, AI 자동 생성용 시스템 프롬프트는 <code>guide/ai-system-prompt.md</code>를 참고.</p>
+    <ol>
+      <li><span class="name">:::cover</span><span class="desc">표지 (다크)</span></li>
+      <li><span class="name">:::divider</span><span class="desc">장 구분 (검정)</span></li>
+      <li><span class="name">:::divider{primary}</span><span class="desc">장 구분 (primary 색상 강조)</span></li>
+      <li><span class="name">:::split</span><span class="desc">제목+불릿+우측 이미지 — 가장 빈도 높음</span></li>
+      <li><span class="name">:::bullets</span><span class="desc">풀폭 제목+불릿 — 텍스트 헤비</span></li>
+      <li><span class="name">:::stats</span><span class="desc">불릿+우측 통계 사이드바</span></li>
+      <li><span class="name">:::charts</span><span class="desc">불릿+우측 2-col 차트 그리드</span></li>
+      <li><span class="name">:::disclaimer</span><span class="desc">회색 불릿+하단 면책</span></li>
+      <li><span class="name">:::thanks</span><span class="desc">마지막 인사</span></li>
+    </ol>
+  </section>
+
+  <!-- 01. cover -->
+  <section data-label="01 :::cover" class="cover cover-dark" style="justify-content: center;">
+    <div class="tpl-badge"><span class="id">:::cover</span><span class="use">데크의 첫 슬라이드 — 발표 제목과 발표자</span></div>
+    <div class="center" style="gap: 40px; margin-top: 96px;">
+      <h1 class="display" style="font-size: 200px; line-height: 0.95; margin: 0; font-weight: 900;">발표 제목</h1>
+      <div class="h2 muted" style="max-width: 1400px;">한 줄 부제 — 발표를 한 문장으로 요약</div>
+      <div style="margin-top: 48px; font-size: 36px;"><span class="muted" style="font-family: 'JetBrains Mono', monospace;">25-000</span>&nbsp;&nbsp;발표자명</div>
+    </div>
+
+    <details class="tpl-source">
+      <summary>show source</summary>
+<pre>:::cover{label="01 표지"}
+# 발표 제목
+
+한 줄 부제 — 발표를 한 문장으로 요약
+:::
+
+<span style="color:#888"># 발표자명·학번은 frontmatter에서:</span>
+<span style="color:#888"># ---</span>
+<span style="color:#888"># author: 발표자명</span>
+<span style="color:#888"># id: 25-000</span>
+<span style="color:#888"># ---</span></pre>
+    </details>
+  </section>
+
+  <!-- 02. divider -->
+  <section data-label="02 :::divider" class="section-divider">
+    <div class="tpl-badge"><span class="id">:::divider</span><span class="use">장(章) 구분 — 새 섹션 시작 전</span></div>
+    <div class="sec-label">Section 01</div>
+    <h2 class="h1">섹션 제목 — 다음 장의 한 줄 요약</h2>
+
+    <details class="tpl-source">
+      <summary>show source</summary>
+<pre>:::divider{n=1 label="§ 섹션명"}
+# 섹션 제목 — 다음 장의 한 줄 요약
+:::</pre>
+    </details>
+  </section>
+
+  <!-- 03. divider primary -->
+  <section data-label="03 :::divider{primary}" class="section-divider primary">
+    <div class="tpl-badge"><span class="id">:::divider{primary}</span><span class="use">강조용 장 구분 — 클라이맥스/전환점 (primary 색상 배경)</span></div>
+    <div class="sec-label">Section 04</div>
+    <h2 class="h1">결정적 전환 — 강조하고 싶은 섹션</h2>
+
+    <details class="tpl-source">
+      <summary>show source</summary>
+<pre>:::divider{n=4 primary label="§ 섹션명"}
+# 결정적 전환 — 강조하고 싶은 섹션
+:::</pre>
+    </details>
+  </section>
+
+  <!-- 04. split -->
+  <section data-label="04 :::split">
+    <div class="tpl-badge"><span class="id">:::split</span><span class="use">제목+불릿+우측 이미지 — 데크의 주력 패턴</span></div>
+    <div class="split">
+      <div class="text-block">
+        <h1 class="h1" style="margin: 0 0 var(--gap-title);">슬라이드 제목</h1>
+        <ul class="bullets">
+          <li>일반 불릿 — 핵심 단어는 <span class="primary" style="font-weight: 700;">강조 색상</span>으로 처리</li>
+          <li>두 번째 불릿 — 한 슬라이드에 4–5개가 적정</li>
+          <li>세 번째 불릿 — 너무 길면 데크 톤이 무너짐</li>
+          <li class="key-item">마지막 줄은 key-item — 결론·요약을 굵게</li>
+        </ul>
+      </div>
+      <div class="media-block placeholder" style="aspect-ratio: 4 / 3; min-height: 500px;">
+        <div class="ph-tag">IMAGE</div>
+        <div>4:3 비율 권장</div>
+      </div>
+    </div>
+
+    <details class="tpl-source">
+      <summary>show source</summary>
+<pre>:::split{label="04 슬라이드 제목"}
+# 슬라이드 제목
+
+- 일반 불릿 — 핵심 단어는 :primary[강조 색상]으로 처리
+- 두 번째 불릿 — 한 슬라이드에 4–5개가 적정
+- 세 번째 불릿 — 너무 길면 데크 톤이 무너짐
+- :key 마지막 줄은 결론·요약을 굵게
+
+![](./assets/example.png)
+:::</pre>
+    </details>
+  </section>
+
+  <!-- 05. bullets -->
+  <section data-label="05 :::bullets">
+    <div class="tpl-badge"><span class="id">:::bullets</span><span class="use">텍스트 헤비 — 이미지 없이 논점만</span></div>
+    <h1 class="h1" style="margin: 0 0 var(--gap-title);">텍스트 중심 슬라이드 제목</h1>
+    <ul class="bullets">
+      <li>풀폭 사용 시 한 불릿당 글자 수를 더 늘려도 됨 — <span class="primary" style="font-weight: 700;">최대 1400px</span> 폭이라 여백이 자연스럽게 잡힘</li>
+      <li>두 번째 불릿 — 논리 전개가 길거나 인용문이 들어갈 때 적합</li>
+      <li>세 번째 불릿 — 논점이 5개를 넘어가면 두 슬라이드로 나누는 편이 가독성에 유리</li>
+      <li>네 번째 불릿 — muted-item으로 부연 설명을 하나 끼우는 것도 가능</li>
+      <li class="key-item">마지막 불릿은 key-item — 이 슬라이드에서 가져갈 단 하나의 메시지</li>
+    </ul>
+
+    <details class="tpl-source">
+      <summary>show source</summary>
+<pre>:::bullets{label="05 슬라이드 제목"}
+# 텍스트 중심 슬라이드 제목
+
+- 풀폭 사용 시 한 불릿당 글자 수를 더 늘려도 됨 — :primary[최대 1400px] 폭이라 여백이 자연스럽게 잡힘
+- 두 번째 불릿 — 논리 전개가 길거나 인용문이 들어갈 때 적합
+- 세 번째 불릿 — 논점이 5개를 넘어가면 두 슬라이드로 나누는 편이 가독성에 유리
+- :muted 네 번째 불릿 — 부연 설명을 하나 끼우는 것도 가능
+- :key 마지막 불릿은 이 슬라이드에서 가져갈 단 하나의 메시지
+:::</pre>
+    </details>
+  </section>
+
+  <!-- 06. stats -->
+  <section data-label="06 :::stats">
+    <div class="tpl-badge"><span class="id">:::stats</span><span class="use">불릿 + 우측 통계 사이드바 — 숫자 강조용</span></div>
+    <div class="split">
+      <div class="text-block">
+        <h1 class="h1" style="margin: 0 0 var(--gap-title);">통계가 핵심인 슬라이드</h1>
+        <ul class="bullets">
+          <li>좌측에는 통계의 의미·맥락을 풀어쓰고</li>
+          <li>우측에는 숫자만 크게 — 눈이 즉시 멈추도록</li>
+          <li>3개 이내가 적정 — 더 많아지면 한 슬라이드 안에서 비교가 안 됨</li>
+          <li class="key-item">숫자는 가급적 단위(%)·기간 명시</li>
+        </ul>
+      </div>
+      <div class="media-block" style="display: grid; grid-template-columns: 1fr; gap: 24px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--rule); padding-bottom: 20px;">
+          <div class="primary" style="font-size: 72px; font-weight: 700; letter-spacing: -0.03em;">−88.88%</div>
+          <div style="font-size: 24px; color: var(--fg-muted); font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em; text-transform: uppercase;">지표 1</div>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--rule); padding-bottom: 20px;">
+          <div style="font-size: 72px; font-weight: 700; letter-spacing: -0.03em;">약 −60%</div>
+          <div style="font-size: 24px; color: var(--fg-muted); font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em; text-transform: uppercase;">지표 2</div>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--rule); padding-bottom: 20px;">
+          <div style="font-size: 72px; font-weight: 700; letter-spacing: -0.03em;">9,000+</div>
+          <div style="font-size: 24px; color: var(--fg-muted); font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em; text-transform: uppercase;">지표 3</div>
+        </div>
+      </div>
+    </div>
+
+    <details class="tpl-source">
+      <summary>show source</summary>
+<pre>:::stats{label="06 슬라이드 제목"}
+# 통계가 핵심인 슬라이드
+
+- 좌측에는 통계의 의미·맥락을 풀어쓰고
+- 우측에는 숫자만 크게 — 눈이 즉시 멈추도록
+- :key 숫자는 가급적 단위(%)·기간 명시
+
+::stat[−88.88%]{label="지표 1" primary}
+::stat[약 −60%]{label="지표 2"}
+::stat[9,000+]{label="지표 3"}
+:::</pre>
+    </details>
+  </section>
+
+  <!-- 07. charts -->
+  <section data-label="07 :::charts">
+    <div class="tpl-badge"><span class="id">:::charts</span><span class="use">불릿 + 우측 2-col 차트 그리드 — 비교/타임라인</span></div>
+    <h1 class="h1" style="margin: 0 0 var(--gap-title);">두 자료를 나란히 비교</h1>
+    <div class="split" style="align-items: center; gap: 60px;">
+      <div class="text-block" style="flex: 1;">
+        <ul class="bullets">
+          <li>좌측 텍스트 — 두 차트가 무엇을 보여주는지</li>
+          <li>각 차트는 캡션 라벨로 식별</li>
+          <li>차트가 핵심이라면 글자 수는 줄여서 시선이 우측으로 가게</li>
+          <li class="key-item">두 자료의 비교 결론을 마지막에</li>
+        </ul>
+      </div>
+      <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start;">
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 16px; color: var(--fg-muted); letter-spacing: 0.08em; text-transform: uppercase;">차트 캡션 A</div>
+          <div class="placeholder" style="aspect-ratio: 4 / 3;"><div class="ph-tag">CHART A</div></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 16px; color: var(--fg-muted); letter-spacing: 0.08em; text-transform: uppercase;">차트 캡션 B</div>
+          <div class="placeholder" style="aspect-ratio: 4 / 3;"><div class="ph-tag">CHART B</div></div>
+        </div>
+      </div>
+    </div>
+
+    <details class="tpl-source">
+      <summary>show source</summary>
+<pre>:::charts{label="07 슬라이드 제목"}
+# 두 자료를 나란히 비교
+
+- 좌측 텍스트 — 두 차트가 무엇을 보여주는지
+- 각 차트는 캡션 라벨로 식별
+- 차트가 핵심이라면 글자 수는 줄여서 시선이 우측으로 가게
+- :key 두 자료의 비교 결론을 마지막에
+
+::chart{src="./assets/chart-a.png" caption="차트 캡션 A"}
+::chart{src="./assets/chart-b.png" caption="차트 캡션 B"}
+:::</pre>
+    </details>
+  </section>
+
+  <!-- 08. disclaimer -->
+  <section data-label="08 :::disclaimer">
+    <div class="tpl-badge"><span class="id">:::disclaimer</span><span class="use">회색 불릿 + 하단 면책 — 검증 안 된 가설/여담</span></div>
+    <h1 class="h1" style="margin: 0 0 var(--gap-title);">검증되지 않은 주장들</h1>
+    <ul class="bullets">
+      <li class="muted-item">muted-item 1 — 학술적 근거가 약한 주장</li>
+      <li class="muted-item">muted-item 2 — 농담·여담·음모론 등</li>
+      <li class="muted-item">muted-item 3 — 데크 본류와 분리해서 보여주는 콘텐츠</li>
+      <li class="muted-item">muted-item 4 — 톤이 회색이라 시선이 자연스럽게 본문보다 약하게 잡힘</li>
+    </ul>
+    <div style="margin-top: auto; padding-top: 32px; border-top: 1px solid var(--rule); font-family: 'JetBrains Mono', monospace; font-size: 22px; color: var(--fg-subtle); letter-spacing: 0.05em;">
+      * 면책 문구 — 본 슬라이드의 내용은 학술적으로 검증되지 않았습니다
+    </div>
+
+    <details class="tpl-source">
+      <summary>show source</summary>
+<pre>:::disclaimer{label="08 슬라이드 제목"}
+# 검증되지 않은 주장들
+
+- 학술적 근거가 약한 주장
+- 농담·여담·음모론 등
+- 데크 본류와 분리해서 보여주는 콘텐츠
+- 톤이 회색이라 시선이 자연스럽게 본문보다 약하게 잡힘
+
+::note[본 슬라이드의 내용은 학술적으로 검증되지 않았습니다]
+:::</pre>
+    </details>
+  </section>
+
+  <!-- 09. thanks -->
+  <section data-label="09 :::thanks" class="cover-dark">
+    <div class="tpl-badge"><span class="id">:::thanks</span><span class="use">데크의 마지막 슬라이드</span></div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 32px; text-align: center; margin-top: 60px;">
+      <h1 class="display" style="font-size: 140px; font-weight: 900; line-height: 1; margin: 0;">감사합니다</h1>
+      <div style="font-size: 32px; margin-top: 24px;">발표자명 <span class="muted" style="font-family: 'JetBrains Mono', monospace; font-size: 26px; margin-left: 10px;">25-000</span></div>
+    </div>
+
+    <details class="tpl-source">
+      <summary>show source</summary>
+<pre>:::thanks
+:::
+
+<span style="color:#888"># 발표자명·학번은 frontmatter에서 자동 채워짐.</span>
+<span style="color:#888"># 메시지를 바꾸려면 H1 추가:</span>
+:::thanks
+# 질문 환영합니다
+:::</pre>
+    </details>
+  </section>
+
+</deck-stage>
+
+<script src="../deck-stage.js"></script>
+
+<script>
+  (function () {
+    const root = document.documentElement;
+    const picker = document.getElementById('theme-picker');
+    if (!picker) return;
+    const display = document.getElementById('theme-picker-value');
+    const buttons = picker.querySelectorAll('button[data-c]');
+    const input = picker.querySelector('input[type="color"]');
+
+    function applyColor(s500, s600, label) {
+      root.style.setProperty('--sb-color-primary-s500', s500);
+      root.style.setProperty('--sb-color-primary-s600', s600 || s500);
+      if (display) display.textContent = label || s500;
+    }
+
+    function darken(hex, amount) {
+      const n = parseInt(hex.slice(1), 16);
+      let r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
+      r = Math.max(0, Math.floor(r * (1 - amount)));
+      g = Math.max(0, Math.floor(g * (1 - amount)));
+      b = Math.max(0, Math.floor(b * (1 - amount)));
+      return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+    }
+
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const name = (btn.title || '').split(' —')[0].trim();
+        applyColor(btn.dataset.c, btn.dataset.d, name);
+        buttons.forEach(b => b.classList.toggle('active', b === btn));
+      });
+    });
+
+    if (input) {
+      input.addEventListener('input', e => {
+        const c = e.target.value;
+        applyColor(c, darken(c, 0.18), c.toUpperCase());
+        buttons.forEach(b => b.classList.remove('active'));
+      });
+    }
+
+    // 초기값 표시
+    buttons[0]?.classList.add('active');
+  })();
+</script>
+
+</body>
+</html>

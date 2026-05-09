@@ -1,0 +1,31 @@
+{
+  "name": "studio-baeks-ppt-engine",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vercel dev",
+    "build:engine": "cd engine && bun run build",
+    "build:templates": "cd engine && bun run build:templates"
+  },
+  "dependencies": {
+    "@vercel/node": "^3.2.20",
+    "katex": "^0.16.10",
+    "remark-directive": "^3.0.0",
+    "remark-frontmatter": "^5.0.0",
+    "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "@types/katex": "^0.16.8",
+    "@types/mdast": "^4.0.4",
+    "@types/node": "^20.0.0",
+    "mdast-util-directive": "^3.0.0",
+    "typescript": "^5.4.0"
+  }
+}

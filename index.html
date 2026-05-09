@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Studio Baeks PPT Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h1>Studio Baeks PPT Engine</h1>
+      <span class="tag">MD → 1920×1080 HTML 슬라이드 데크</span>
+    </div>
+    <nav>
+      <a href="https://github.com/" target="_blank" rel="noopener">GitHub</a>
+      <a href="/docs/how-to-use.md" target="_blank">Docs</a>
+      <a href="/docs/Skills.md" download>AI Skill ↓</a>
+    </nav>
+  </header>
+
+  <div id="toolbar">
+    <div id="primary-picker" title="미리보기 색상 — MD 본문은 안 건드림">
+      <span class="picker-label">PRIMARY</span>
+      <div class="swatches">
+        <button class="swatch active" data-color="" title="frontmatter 따름" style="background: linear-gradient(135deg, #888 50%, transparent 50%);"></button>
+        <button class="swatch" data-color="terracotta" title="terracotta" style="background:oklch(0.56 0.165 30)"></button>
+        <button class="swatch" data-color="rust"       title="rust"       style="background:oklch(0.56 0.155 18)"></button>
+        <button class="swatch" data-color="mustard"    title="mustard"    style="background:oklch(0.56 0.140 75)"></button>
+        <button class="swatch" data-color="sage"       title="sage"       style="background:oklch(0.56 0.110 130)"></button>
+        <button class="swatch" data-color="mauve"      title="mauve"      style="background:oklch(0.56 0.115 340)"></button>
+        <button class="swatch" data-color="teal"       title="teal"       style="background:oklch(0.56 0.115 200)"></button>
+        <button class="swatch" data-color="sky"        title="sky"        style="background:oklch(0.56 0.080 235)"></button>
+        <button class="swatch" data-color="stone"      title="stone"      style="background:oklch(0.56 0.010 75)"></button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <input type="file" id="file-input" multiple accept="image/*" hidden />
+      <button id="upload-btn" class="btn">+ 이미지</button>
+      <button id="sample-btn" class="btn">Sample</button>
+      <button id="download-html-btn" class="btn primary" disabled>HTML ↓</button>
+      <a class="btn" href="/deck-stage.js" download>deck-stage.js ↓</a>
+    </div>
+  </div>
+
+  <main>
+    <div class="pane editor-pane">
+      <textarea id="editor" spellcheck="false" placeholder="여기에 MD를 붙여넣거나 [Sample] 버튼을 누르세요.&#10;&#10;사용법: /docs/how-to-use.md&#10;AI Skill: /docs/Skills.md"></textarea>
+    </div>
+    <div class="pane preview-pane">
+      <iframe id="preview" title="Preview"></iframe>
+      <div id="drop-overlay" class="drop-overlay" hidden>이미지를 놓으세요</div>
+    </div>
+  </main>
+
+  <footer id="status">
+    <span id="slide-count">— 슬라이드</span>
+    <span class="dot">·</span>
+    <span id="convert-time">변환 대기</span>
+    <span class="dot">·</span>
+    <span id="primary-status">primary: frontmatter</span>
+    <span class="dot">·</span>
+    <span id="asset-count">assets: 0</span>
+    <span id="error-msg" class="error"></span>
+  </footer>
+
+  <script src="/editor.js"></script>
+</body>
+</html>

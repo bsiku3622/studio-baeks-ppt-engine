@@ -41,9 +41,26 @@
 
     <div class="actions">
       <input type="file" id="file-input" multiple accept="image/*" hidden />
-      <button id="upload-btn" class="btn">+ 이미지</button>
+      <button id="upload-btn" class="btn">이미지 관리</button>
       <button id="sample-btn" class="btn">Sample</button>
       <button id="download-html-btn" class="btn primary" disabled>HTML ↓</button>
+    </div>
+  </div>
+
+  <div id="asset-modal" class="modal" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog" role="dialog" aria-labelledby="modal-title" aria-modal="true">
+      <div class="modal-header">
+        <h2 id="modal-title">이미지 관리</h2>
+        <button class="modal-close" type="button" aria-label="닫기">×</button>
+      </div>
+      <div class="modal-toolbar">
+        <button id="modal-upload-btn" class="btn" type="button">+ 업로드</button>
+        <input type="file" id="modal-file-input" multiple accept="image/*" hidden />
+        <span id="modal-summary" class="modal-summary">총 0장</span>
+        <span class="modal-hint">파일을 모달 안 어디든 드롭해도 됩니다</span>
+      </div>
+      <div id="modal-grid" class="modal-grid"></div>
     </div>
   </div>
 

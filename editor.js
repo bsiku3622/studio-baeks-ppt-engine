@@ -180,22 +180,21 @@ function setFrontmatterPrimary(name) {
 // ─ Image upload (base64 in browser) ─────────────
 
 function handleFiles(files) {
-  let added = 0;
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
     const reader = new FileReader();
     reader.onload = (e) => {
       assetMap.set(file.name, e.target.result);
-      added++;
       assetCountEl.textContent = `assets: ${assetMap.size}`;
-      // Rerun preview without re-querying server (just rewrite asset paths).
       if (lastHtml) preview.srcdoc = injectAssets(lastHtml);
+      if (!modal.hidden) renderModal();
     };
     reader.readAsDataURL(file);
   }
 }
 
-uploadBtn.addEventListener('click', () => fileInput.click());
+// "이미지 관리" button → open modal (replaces direct file picker)
+uploadBtn.addEventListener('click', () => openModal());
 fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
 
 // Drag & drop on whole document — only show overlay for file drags
@@ -206,6 +205,7 @@ function isFileDrag(e) {
 document.addEventListener('dragenter', (e) => {
   if (!isFileDrag(e)) return;
   e.preventDefault();
+  if (!modal.hidden) return;   // modal handles its own drag UI
   dragCounter++;
   dropOverlay.classList.add('active');
 });
@@ -238,22 +238,21 @@ sampleBtn.addEventListener('click', async () => {
     const md = await res.text();
     editor.value = md;
 
-    // Pre-populate assetMap with sample asset URLs so the preview shows
-    // images without re-uploading. The downloaded HTML keeps the original
-    // ./assets/ paths (users place an assets/ folder next to their HTML).
-    assetMap.clear();
+    // Add sample asset URLs without overwriting user uploads (theirs win).
     const assetNames = new Set();
     const re = /\.\/assets\/([^\s"')]+)/g;
     let m;
     while ((m = re.exec(md)) !== null) assetNames.add(m[1]);
     for (const name of assetNames) {
-      assetMap.set(name, `${location.origin}/example/assets/${name}`);
+      if (!assetMap.has(name)) {
+        assetMap.set(name, `${location.origin}/example/assets/${name}`);
+      }
     }
     assetCountEl.textContent = `assets: ${assetMap.size}`;
 
     convert();
   } catch (e) {
-    errorEl.textContent = `Sample 로드 실패: ${e.message}`;
+    showError(`Sample 로드 실패: ${e.message}`);
   }
 });
 
@@ -287,6 +286,191 @@ if (saved) {
 editor.addEventListener('input', () => {
   localStorage.setItem(SAVED_KEY, editor.value);
 });
+
+// ─ Asset management modal ────────────────────────
+
+const modal = document.getElementById('asset-modal');
+const modalGrid = document.getElementById('modal-grid');
+const modalSummary = document.getElementById('modal-summary');
+const modalCloseBtn = modal.querySelector('.modal-close');
+const modalBackdrop = modal.querySelector('.modal-backdrop');
+const modalUploadBtn = document.getElementById('modal-upload-btn');
+const modalFileInput = document.getElementById('modal-file-input');
+
+function openModal() {
+  modal.hidden = false;
+  renderModal();
+  document.body.style.overflow = 'hidden';
+}
+function closeModal() {
+  modal.hidden = true;
+  document.body.style.overflow = '';
+}
+
+modalCloseBtn.addEventListener('click', closeModal);
+modalBackdrop.addEventListener('click', closeModal);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !modal.hidden) closeModal();
+});
+
+modalUploadBtn.addEventListener('click', () => modalFileInput.click());
+modalFileInput.addEventListener('change', (e) => {
+  handleFiles(e.target.files);
+  modalFileInput.value = '';
+});
+
+// Modal-internal drop zone (in addition to the document-wide drop)
+modal.addEventListener('dragenter', (e) => {
+  if (isFileDrag(e)) modalGrid.classList.add('drag-over');
+});
+modal.addEventListener('dragleave', (e) => {
+  if (e.target === modal || e.target === modalBackdrop) {
+    modalGrid.classList.remove('drag-over');
+  }
+});
+
+function scanMdReferences(md) {
+  const refs = new Map();
+  const re = /\.\/assets\/([^\s"')\]]+)/g;
+  let m;
+  while ((m = re.exec(md)) !== null) {
+    const name = m[1];
+    refs.set(name, (refs.get(name) || 0) + 1);
+  }
+  return refs;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderModal() {
+  const refs = scanMdReferences(editor.value);
+  const referenced = [];
+  const unused = [];
+  const missing = [];
+
+  for (const [name, value] of assetMap) {
+    const count = refs.get(name) || 0;
+    if (count > 0) referenced.push({ name, value, count });
+    else unused.push({ name, value, count: 0 });
+  }
+  for (const [name, count] of refs) {
+    if (!assetMap.has(name)) missing.push({ name, count });
+  }
+  // Stable order: by name
+  referenced.sort((a, b) => a.name.localeCompare(b.name));
+  unused.sort((a, b) => a.name.localeCompare(b.name));
+  missing.sort((a, b) => a.name.localeCompare(b.name));
+
+  let html = '';
+  if (referenced.length === 0 && unused.length === 0 && missing.length === 0) {
+    html = '<div class="modal-empty">업로드된 이미지가 없습니다.<br/>+ 업로드 버튼을 누르거나 파일을 모달에 드래그하세요.</div>';
+  } else {
+    if (referenced.length > 0) {
+      html += `<h3 class="modal-section-h">✓ MD에서 참조 (${referenced.length})</h3>`;
+      html += `<div class="asset-grid">${referenced.map(renderCard).join('')}</div>`;
+    }
+    if (unused.length > 0) {
+      html += `<h3 class="modal-section-h">◦ 업로드만 됨 / unused (${unused.length})</h3>`;
+      html += `<div class="asset-grid">${unused.map((c) => renderCard(c, true)).join('')}</div>`;
+    }
+    if (missing.length > 0) {
+      html += `<h3 class="modal-section-h warn">⚠ MD가 참조하는데 없는 파일 (${missing.length})</h3>`;
+      html += `<div class="asset-grid">${missing.map(renderMissingCard).join('')}</div>`;
+    }
+  }
+  modalGrid.innerHTML = html;
+  modalGrid.classList.remove('drag-over');
+  modalSummary.textContent = `총 ${assetMap.size}장 · 참조 ${referenced.length}, unused ${unused.length}, missing ${missing.length}`;
+}
+
+function renderCard({ name, value, count }, isUnused = false) {
+  const safeName = escHtml(name);
+  const info = isUnused ? '미사용' : `${count}곳에서 사용`;
+  return `
+    <div class="asset-card${isUnused ? ' unused' : ''}" data-name="${safeName}">
+      <div class="asset-thumb"><img src="${escHtml(value)}" alt=""></div>
+      <div class="asset-name" title="${safeName}">${safeName}</div>
+      <div class="asset-info">${info}</div>
+      <div class="asset-actions">
+        <button class="btn-mini" data-action="insert">삽입</button>
+        <button class="btn-mini danger" data-action="delete">삭제</button>
+      </div>
+    </div>`;
+}
+
+function renderMissingCard({ name, count }) {
+  const safeName = escHtml(name);
+  return `
+    <div class="asset-card missing" data-name="${safeName}">
+      <div class="asset-thumb">?</div>
+      <div class="asset-name" title="${safeName}">${safeName}</div>
+      <div class="asset-info">${count}곳에서 참조</div>
+      <div class="asset-actions">
+        <button class="btn-mini" data-action="upload-for">업로드</button>
+      </div>
+    </div>`;
+}
+
+modalGrid.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const action = btn.dataset.action;
+  const card = btn.closest('.asset-card');
+  if (!card) return;
+  const name = card.dataset.name;
+
+  if (action === 'insert') {
+    insertAtCursor(`![${name.replace(/\.[^.]+$/, '')}](./assets/${name})`);
+    closeModal();
+  } else if (action === 'delete') {
+    if (!confirm(`${name} 삭제? (MD 본문은 안 건드립니다)`)) return;
+    assetMap.delete(name);
+    assetCountEl.textContent = `assets: ${assetMap.size}`;
+    if (lastHtml) preview.srcdoc = injectAssets(lastHtml);
+    renderModal();
+  } else if (action === 'upload-for') {
+    // Trigger file picker; user picks any file, we rename to the missing name.
+    const tempInput = document.createElement('input');
+    tempInput.type = 'file';
+    tempInput.accept = 'image/*';
+    tempInput.onchange = (ev) => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (le) => {
+        assetMap.set(name, le.target.result);
+        assetCountEl.textContent = `assets: ${assetMap.size}`;
+        if (lastHtml) preview.srcdoc = injectAssets(lastHtml);
+        renderModal();
+      };
+      reader.readAsDataURL(file);
+    };
+    tempInput.click();
+  }
+});
+
+function insertAtCursor(text) {
+  const start = editor.selectionStart ?? editor.value.length;
+  const end = editor.selectionEnd ?? editor.value.length;
+  const before = editor.value.slice(0, start);
+  const after = editor.value.slice(end);
+  // Ensure surrounding newlines so the image renders inside its slide cleanly.
+  const prefix = before.endsWith('\n') || before.length === 0 ? '' : '\n';
+  const suffix = after.startsWith('\n') ? '' : '\n';
+  const insertion = prefix + text + suffix;
+  editor.value = before + insertion + after;
+  const newPos = start + insertion.length;
+  editor.selectionStart = editor.selectionEnd = newPos;
+  editor.focus();
+  localStorage.setItem(SAVED_KEY, editor.value);
+  convert();
+}
 
 // ─ AI Prompt copy (Skills.md body without frontmatter) ────
 

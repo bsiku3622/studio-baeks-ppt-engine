@@ -1,4 +1,13 @@
 // Studio Baeks PPT Engine — editor
+
+// File:// protocol can't reach server endpoints. Show a helpful banner.
+if (location.protocol === 'file:') {
+  const banner = document.createElement('div');
+  banner.style.cssText = 'background:#FFF8E1;border-bottom:1px solid #E5B800;padding:10px 24px;font-family:"JetBrains Mono",monospace;font-size:12px;color:#7A5A00;';
+  banner.innerHTML = '⚠ <code>file://</code> 모드에서는 변환 API와 Sample 로드가 작동하지 않습니다. 실제 사용은 <code>npx vercel dev</code> 또는 <a href="https://studio-baeks-ppt-engine.vercel.app" target="_blank">배포된 사이트</a>로.';
+  document.body.insertBefore(banner, document.body.firstChild);
+}
+
 const editor = document.getElementById('editor');
 const preview = document.getElementById('preview');
 const slideCountEl = document.getElementById('slide-count');
@@ -114,22 +123,33 @@ function handleFiles(files) {
 uploadBtn.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
 
-// Drag & drop on whole document
+// Drag & drop on whole document — only show overlay for file drags
 let dragCounter = 0;
+function isFileDrag(e) {
+  return e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+}
 document.addEventListener('dragenter', (e) => {
+  if (!isFileDrag(e)) return;
   e.preventDefault();
   dragCounter++;
-  if (e.dataTransfer.types.includes('Files')) dropOverlay.hidden = false;
+  dropOverlay.classList.add('active');
 });
-document.addEventListener('dragover', (e) => e.preventDefault());
-document.addEventListener('dragleave', () => {
+document.addEventListener('dragover', (e) => {
+  if (isFileDrag(e)) e.preventDefault();
+});
+document.addEventListener('dragleave', (e) => {
+  if (!isFileDrag(e)) return;
   dragCounter--;
-  if (dragCounter === 0) dropOverlay.hidden = true;
+  if (dragCounter <= 0) {
+    dragCounter = 0;
+    dropOverlay.classList.remove('active');
+  }
 });
 document.addEventListener('drop', (e) => {
+  if (!isFileDrag(e)) return;
   e.preventDefault();
   dragCounter = 0;
-  dropOverlay.hidden = true;
+  dropOverlay.classList.remove('active');
   handleFiles(e.dataTransfer.files);
 });
 

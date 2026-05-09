@@ -34,7 +34,9 @@ export type ConvertOptions = {
   templatePath?: string;
   /** Alternative to templatePath — pass the template string directly. */
   templateString?: string;
-  /** src attribute value for the <script> tag pointing to deck-stage.js. */
+  /** Inline deck-stage.js source — produces self-contained HTML (preferred). */
+  deckStageScript?: string;
+  /** External src URL for <script src="...">. Used only if deckStageScript is not given. */
   deckStageSrc?: string;
   /** Override frontmatter `primary` (e.g., for live preview UI). MD body untouched. */
   primaryOverride?: string;
@@ -77,12 +79,18 @@ export function convertMd(md: string, opts: ConvertOptions = {}): ConvertResult 
     opts.templateString ??
     fs.readFileSync(opts.templatePath ?? path.resolve(import.meta.dir, 'template.html'), 'utf8');
 
+  // Build script tag: inline preferred, src fallback.
+  const scriptTag = opts.deckStageScript
+    ? `<script>${opts.deckStageScript}\n</script>`
+    : `<script src="${opts.deckStageSrc ?? 'deck-stage.js'}"></script>`;
+
+  // Use function replacers to avoid `$&` etc. being interpreted in the JS source.
   const html = template
     .replace(/\{\{TITLE\}\}/g, escAttr(fm.title ?? '슬라이드 데크'))
     .replace(/\{\{PRIMARY_S500\}\}/g, s500)
     .replace(/\{\{PRIMARY_S600\}\}/g, s600)
-    .replace(/\{\{DECK_STAGE_SRC\}\}/g, opts.deckStageSrc ?? 'deck-stage.js')
-    .replace('{{SLIDES}}', slides.join('\n\n  '));
+    .replace('{{SLIDES}}', () => slides.join('\n\n  '))
+    .replace('{{DECK_STAGE_SCRIPT_TAG}}', () => scriptTag);
 
   return { html, slideCount: slides.length, frontmatter: fm };
 }

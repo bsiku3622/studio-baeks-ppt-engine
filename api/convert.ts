@@ -1,6 +1,17 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { convertMd } from '../engine/convert.js';
+
+// Cache template + deck-stage.js once per cold start.
+const TEMPLATE = fs.readFileSync(
+  path.resolve(process.cwd(), 'engine/template.html'),
+  'utf8',
+);
+const DECK_STAGE_SCRIPT = fs.readFileSync(
+  path.resolve(process.cwd(), 'deck-stage.js'),
+  'utf8',
+);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -19,8 +30,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const t0 = Date.now();
     const result = convertMd(markdown, {
-      templatePath: path.resolve(process.cwd(), 'engine/template.html'),
-      deckStageSrc: '/deck-stage.js',
+      templateString: TEMPLATE,
+      deckStageScript: DECK_STAGE_SCRIPT,
       primaryOverride: primaryOverride && primaryOverride.length > 0 ? primaryOverride : undefined,
     });
     const elapsedMs = Date.now() - t0;

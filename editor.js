@@ -69,13 +69,23 @@ async function convert() {
     const previewHtml = injectAssets(html);
     preview.srcdoc = previewHtml;
 
+    // Sync swatch active state to the EFFECTIVE primary (override wins,
+    // else frontmatter, else default). The reset swatch (empty data-color)
+    // never gets active.
+    const fmPrimary = frontmatter?.primary || 'terracotta';
+    const effective = primaryOverride || fmPrimary;
+    swatches.forEach((sw) => {
+      const c = sw.dataset.color;
+      sw.classList.toggle('active', !!c && c === effective);
+    });
+
     slideCountEl.textContent = `${slideCount} 슬라이드`;
     convertTimeEl.textContent = `변환 ${elapsedMs}ms`;
     errorEl.textContent = '';
     downloadHtmlBtn.disabled = false;
     primaryStatusEl.textContent = primaryOverride
       ? `primary: ${primaryOverride} (override)`
-      : `primary: ${frontmatter?.primary || 'terracotta'} (frontmatter)`;
+      : `primary: ${fmPrimary} (frontmatter)`;
   } catch (e) {
     errorEl.textContent = `네트워크 오류: ${e.message}`;
   }
@@ -95,10 +105,8 @@ editor.addEventListener('input', scheduleConvert);
 
 swatches.forEach((sw) => {
   sw.addEventListener('click', () => {
-    swatches.forEach((s) => s.classList.remove('active'));
-    sw.classList.add('active');
     primaryOverride = sw.dataset.color || '';
-    convert();
+    convert();   // active state will sync from response's effective primary
   });
 });
 
@@ -160,7 +168,22 @@ sampleBtn.addEventListener('click', async () => {
   try {
     const res = await fetch('/example/발표.md');
     if (!res.ok) throw new Error('Sample fetch failed');
-    editor.value = await res.text();
+    const md = await res.text();
+    editor.value = md;
+
+    // Pre-populate assetMap with sample asset URLs so the preview shows
+    // images without re-uploading. The downloaded HTML keeps the original
+    // ./assets/ paths (users place an assets/ folder next to their HTML).
+    assetMap.clear();
+    const assetNames = new Set();
+    const re = /\.\/assets\/([^\s"')]+)/g;
+    let m;
+    while ((m = re.exec(md)) !== null) assetNames.add(m[1]);
+    for (const name of assetNames) {
+      assetMap.set(name, `${location.origin}/example/assets/${name}`);
+    }
+    assetCountEl.textContent = `assets: ${assetMap.size}`;
+
     convert();
   } catch (e) {
     errorEl.textContent = `Sample 로드 실패: ${e.message}`;

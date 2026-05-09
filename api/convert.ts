@@ -21,7 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-    const { markdown, primaryOverride } = body ?? {};
+    const { markdown } = body ?? {};
 
     if (typeof markdown !== 'string') {
       res.status(400).json({ error: 'markdown field required (string)' });
@@ -32,12 +32,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result = convertMd(markdown, {
       templateString: TEMPLATE,
       deckStageScript: DECK_STAGE_SCRIPT,
-      primaryOverride: primaryOverride && primaryOverride.length > 0 ? primaryOverride : undefined,
     });
     const elapsedMs = Date.now() - t0;
 
     res.json({ ...result, elapsedMs });
   } catch (e: any) {
-    res.status(400).json({ error: e?.message ?? String(e) });
+    res.status(400).json({
+      error: e?.message ?? String(e),
+      line: e?.line,
+      column: e?.column,
+    });
   }
 }

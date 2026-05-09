@@ -56,7 +56,7 @@ async function convert() {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Unknown error' }));
-      errorEl.textContent = err.error || 'Conversion failed';
+      showError(err.error || 'Conversion failed', err.line);
       return;
     }
 
@@ -82,8 +82,33 @@ async function convert() {
     downloadHtmlBtn.disabled = false;
     primaryStatusEl.textContent = `primary: ${fmPrimary}`;
   } catch (e) {
-    errorEl.textContent = `네트워크 오류: ${e.message}`;
+    showError(`네트워크 오류: ${e.message}`);
   }
+}
+
+function showError(message, line) {
+  errorEl.textContent = '';
+  errorEl.appendChild(document.createTextNode(message));
+  if (typeof line === 'number') {
+    const link = document.createElement('a');
+    link.href = '#';
+    link.textContent = ` [line ${line}]`;
+    link.className = 'error-jump';
+    link.onclick = (e) => { e.preventDefault(); jumpToLine(line); };
+    errorEl.appendChild(link);
+  }
+}
+
+function jumpToLine(lineNumber) {
+  const lines = editor.value.split('\n');
+  if (lineNumber < 1 || lineNumber > lines.length) return;
+  let pos = 0;
+  for (let i = 0; i < lineNumber - 1; i++) pos += lines[i].length + 1;
+  const lineEnd = pos + lines[lineNumber - 1].length;
+  editor.focus();
+  editor.setSelectionRange(pos, lineEnd);
+  // Approximate scroll: line-height 1.6 × 13px ≈ 21px per line.
+  editor.scrollTop = (lineNumber - 3) * 21;
 }
 
 function injectAssets(html) {

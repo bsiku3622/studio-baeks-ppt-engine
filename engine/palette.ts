@@ -32,6 +32,21 @@ export function isPaletteName(s: string): s is PaletteName {
   return s in palette;
 }
 
+const HEX_RE = /^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+const COLOR_FN_RE = /^(oklch|oklab|rgb|rgba|hsl|hsla|color|hwb|lab|lch)\s*\(/i;
+
+export function validatePrimary(s: string | undefined): { valid: boolean; reason?: string } {
+  if (!s) return { valid: true };
+  if (isPaletteName(s)) return { valid: true };
+  if (HEX_RE.test(s)) return { valid: true };
+  if (COLOR_FN_RE.test(s)) return { valid: true };
+  const names = Object.keys(palette).join(', ');
+  return {
+    valid: false,
+    reason: `Invalid primary "${s}". Use a named palette (${names}), a hex (e.g. #C8442A), or a CSS color function (e.g. oklch(0.56 0.165 30)).`,
+  };
+}
+
 export function resolvePrimary(
   primary: string | undefined,
   primaryDark: string | undefined,
@@ -50,6 +65,6 @@ export function resolvePrimary(
       s600: primaryDark ?? oklchSlot(primary, 600),
     };
   }
-  // Hex passthrough
+  // Hex / CSS color function — passthrough (caller must have validated)
   return { s500: primary, s600: primaryDark ?? primary };
 }

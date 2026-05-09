@@ -190,3 +190,10 @@ main {
   color: var(--error);
   font-weight: 500;
 }
+#status .error-jump {
+  color: var(--error);
+  text-decoration: underline;
+  cursor: pointer;
+  margin-left: 4px;
+}
+#status .error-jump:hover { text-decoration: none; background: rgba(176, 40, 40, 0.1); }

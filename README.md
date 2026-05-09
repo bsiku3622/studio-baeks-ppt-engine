@@ -20,7 +20,7 @@ Markdown으로 작성하는 1920×1080 HTML 슬라이드 데크 빌더.
 ### 로컬 CLI (개발자)
 
 ```sh
-git clone https://github.com/<owner>/studio-baeks-ppt-engine
+git clone https://github.com/bsiku3622/studio-baeks-ppt-engine
 cd studio-baeks-ppt-engine/engine
 bun install
 bun run build              # example/발표.md → example/발표.built.html

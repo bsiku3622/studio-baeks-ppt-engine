@@ -7,7 +7,7 @@ import { parse as parseYaml } from 'yaml';
 import katex from 'katex';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { resolvePrimary } from './palette.js';
+import { resolvePrimary, validatePrimary } from './palette.js';
 import type {
   Root, Heading, List, ListItem, Paragraph, Image,
   PhrasingContent, BlockContent, Yaml,
@@ -17,6 +17,17 @@ import type {
 } from 'mdast-util-directive';
 
 // ───────────────────────── public types ─────────────────────────
+
+export class EngineError extends Error {
+  line?: number;
+  column?: number;
+  constructor(message: string, opts: { line?: number; column?: number } = {}) {
+    super(message);
+    this.name = 'EngineError';
+    this.line = opts.line;
+    this.column = opts.column;
+  }
+}
 
 export type Frontmatter = {
   title?: string;
@@ -38,8 +49,6 @@ export type ConvertOptions = {
   deckStageScript?: string;
   /** External src URL for <script src="...">. Used only if deckStageScript is not given. */
   deckStageSrc?: string;
-  /** Override frontmatter `primary` (e.g., for live preview UI). MD body untouched. */
-  primaryOverride?: string;
 };
 
 export type ConvertResult = {
@@ -63,7 +72,15 @@ export function convertMd(md: string, opts: ConvertOptions = {}): ConvertResult 
 
   for (const node of tree.children) {
     if (node.type === 'yaml') {
-      fm = (parseYaml((node as Yaml).value) ?? {}) as Frontmatter;
+      const yamlStartLine = node.position?.start.line ?? 1;
+      try {
+        fm = (parseYaml((node as Yaml).value) ?? {}) as Frontmatter;
+      } catch (e: any) {
+        const yamlLine = e?.linePos?.[0]?.line ?? 1;
+        throw new EngineError(`Frontmatter YAML 파싱 실패: ${e.message}`, {
+          line: yamlStartLine + yamlLine,
+        });
+      }
       continue;
     }
     if (node.type === 'containerDirective') {
@@ -72,8 +89,17 @@ export function convertMd(md: string, opts: ConvertOptions = {}): ConvertResult 
     }
   }
 
-  const effectivePrimary = opts.primaryOverride ?? fm.primary;
-  const { s500, s600 } = resolvePrimary(effectivePrimary, fm.primaryDark);
+  // Validate frontmatter primary — single source of truth.
+  const primaryCheck = validatePrimary(fm.primary);
+  if (!primaryCheck.valid) {
+    const mdLines = md.split('\n');
+    const idx = mdLines.findIndex((l) => /^\s*primary\s*:/.test(l));
+    throw new EngineError(primaryCheck.reason!, {
+      line: idx >= 0 ? idx + 1 : undefined,
+    });
+  }
+
+  const { s500, s600 } = resolvePrimary(fm.primary, fm.primaryDark);
 
   const template =
     opts.templateString ??
@@ -245,8 +271,10 @@ function renderSlide(d: ContainerDirective, fm: Frontmatter): string | null {
     case 'disclaimer': return renderDisclaimer(d, label);
     case 'thanks':     return renderThanks(d, label, fm);
     default:
-      console.warn(`Unknown slide directive: :::${d.name}`);
-      return null;
+      throw new EngineError(
+        `Unknown slide directive: ":::${d.name}". Valid: cover, split, bullets, divider, stats, charts, disclaimer, thanks.`,
+        { line: d.position?.start.line },
+      );
   }
 }
 

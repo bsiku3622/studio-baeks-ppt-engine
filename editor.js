@@ -197,3 +197,35 @@ if (saved) {
 editor.addEventListener('input', () => {
   localStorage.setItem(SAVED_KEY, editor.value);
 });
+
+// ─ AI Prompt copy (Skills.md body without frontmatter) ────
+
+const copyPromptBtn = document.getElementById('copy-prompt-btn');
+
+function stripFrontmatter(md) {
+  if (md.startsWith('---\n')) {
+    const end = md.indexOf('\n---\n', 4);
+    if (end >= 0) return md.slice(end + 5).trimStart();
+  }
+  return md;
+}
+
+copyPromptBtn?.addEventListener('click', async () => {
+  const original = copyPromptBtn.textContent;
+  try {
+    const res = await fetch('./docs/Skills.md');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const md = await res.text();
+    const prompt = stripFrontmatter(md);
+    await navigator.clipboard.writeText(prompt);
+    copyPromptBtn.textContent = '✓ 복사됨';
+    copyPromptBtn.classList.add('copied');
+    setTimeout(() => {
+      copyPromptBtn.textContent = original;
+      copyPromptBtn.classList.remove('copied');
+    }, 2000);
+  } catch (e) {
+    copyPromptBtn.textContent = '복사 실패';
+    setTimeout(() => { copyPromptBtn.textContent = original; }, 2000);
+  }
+});

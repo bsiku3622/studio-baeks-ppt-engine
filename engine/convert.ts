@@ -80,8 +80,10 @@ export function convertMd(md: string, opts: ConvertOptions = {}): ConvertResult 
     fs.readFileSync(opts.templatePath ?? path.resolve(import.meta.dir, 'template.html'), 'utf8');
 
   // Build script tag: inline preferred, src fallback.
+  // Escape `</` to `<\/` so any `</script>` literal inside the JS source
+  // doesn't terminate the surrounding inline <script> tag prematurely.
   const scriptTag = opts.deckStageScript
-    ? `<script>${opts.deckStageScript}\n</script>`
+    ? `<script>${opts.deckStageScript.replace(/<\//g, '<\\/')}\n</script>`
     : `<script src="${opts.deckStageSrc ?? 'deck-stage.js'}"></script>`;
 
   // Use function replacers to avoid `$&` etc. being interpreted in the JS source.

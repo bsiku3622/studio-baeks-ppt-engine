@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>How to Use — Studio Baeks PPT Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="./style.css" />
+<link rel="stylesheet" href="./style-docs.css" />
+</head>
+<body class="docs-body">
+  <header>
+    <div class="brand">
+      <a href="./" class="brand-link"><h1>Studio Baeks PPT Engine</h1></a>
+      <span class="tag">사용 가이드</span>
+    </div>
+    <nav>
+      <a href="./">← Editor</a>
+      <a href="https://github.com/" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main class="docs-main">
+    <article id="content" class="docs-article">
+      <p class="loading">로딩 중…</p>
+    </article>
+  </main>
+
+  <script type="module">
+    import { marked } from 'https://cdn.jsdelivr.net/npm/marked@13/+esm';
+    try {
+      const res = await fetch('./docs/how-to-use.md');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const md = await res.text();
+      // Strip first H1 since the page already has the brand title.
+      const stripped = md.replace(/^# .+\n/, '');
+      document.getElementById('content').innerHTML = marked.parse(stripped);
+    } catch (e) {
+      document.getElementById('content').innerHTML =
+        `<p class="error">문서 로드 실패: ${e.message}</p>`;
+    }
+  </script>
+</body>
+</html>

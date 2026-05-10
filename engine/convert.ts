@@ -263,6 +263,9 @@ function renderBlock(node: BlockContent): string {
 function findHeading(children: any[]): Heading | undefined {
   return children.find((c) => c.type === 'heading' && c.depth === 1) as Heading | undefined;
 }
+function findFirstHeading(children: any[]): Heading | undefined {
+  return children.find((c) => c.type === 'heading') as Heading | undefined;
+}
 function findFirstParagraph(children: any[]): Paragraph | undefined {
   return children.find((c) => c.type === 'paragraph') as Paragraph | undefined;
 }
@@ -969,14 +972,19 @@ function renderPlotSlide(d: ContainerDirective, label: string | undefined): stri
 }
 
 function renderCover(d: ContainerDirective, label: string | undefined, fm: Frontmatter): string {
-  const heading = findHeading(d.children);
+  // Heading depth controls title size. # = display (gigantic),
+  // ## = medium, ### = standard, etc. — let users dial down for long titles.
+  const heading = findFirstHeading(d.children);
+  const depth = (heading?.depth ?? 1) as 1 | 2 | 3 | 4 | 5 | 6;
+  const COVER_SIZE: Record<number, number> = { 1: 200, 2: 140, 3: 96, 4: 72, 5: 56, 6: 44 };
+  const titleSize = COVER_SIZE[depth] ?? 200;
+  const titleLine = depth <= 2 ? 0.95 : 1.05;
+
   const para = findFirstParagraph(d.children);
   const title = heading ? renderInline(heading.children) : escHtml(fm.title ?? '');
-  // Frontmatter subtitle takes precedence; fall back to first paragraph in body.
   const subtitle = fm.subtitle ? escHtml(fm.subtitle) : (para ? renderInline(para.children) : '');
   const id = escHtml(fm.id ?? '');
   const author = escHtml(fm.author ?? '');
-  // Optional meta line (date / venue) below the author line.
   const metaParts: string[] = [];
   if (fm.date) metaParts.push(escHtml(fm.date));
   if (fm.venue) metaParts.push(escHtml(fm.venue));
@@ -985,7 +993,7 @@ function renderCover(d: ContainerDirective, label: string | undefined, fm: Front
     : '';
   return `<section${dataLabel(label ?? '01 표지')} class="cover cover-dark" style="justify-content: center;">
     <div class="center" style="gap: 40px; margin-top: 96px;">
-      <h1 class="display" style="font-size: 200px; line-height: 0.95; margin: 0; font-weight: 900;">${title}</h1>
+      <h${depth} class="display" style="font-size: ${titleSize}px; line-height: ${titleLine}; margin: 0; font-weight: 900; max-width: 1680px;">${title}</h${depth}>
       <div class="h2 muted" style="max-width: 1400px;">${subtitle}</div>
       <div style="margin-top: 48px; font-size: 36px;"><span class="muted" style="font-family: 'JetBrains Mono', monospace;">${id}</span>&nbsp;&nbsp;${author}</div>${metaLine}
     </div>

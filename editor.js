@@ -9,6 +9,7 @@ if (location.protocol === 'file:') {
 }
 
 const editor = document.getElementById('editor');
+const highlightEl = document.getElementById('editor-highlight');
 const preview = document.getElementById('preview');
 const slideCountEl = document.getElementById('slide-count');
 const convertTimeEl = document.getElementById('convert-time');
@@ -119,7 +120,152 @@ function injectAssets(html) {
   });
 }
 
-editor.addEventListener('input', scheduleConvert);
+editor.addEventListener('input', () => {
+  updateHighlight();
+  scheduleConvert();
+});
+editor.addEventListener('scroll', () => {
+  highlightEl.style.transform = `translate(${-editor.scrollLeft}px, ${-editor.scrollTop}px)`;
+});
+
+// ─ Syntax highlight (regex-based, line-aware) ───────────────────
+
+function escHtmlBasic(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function highlightMd(src) {
+  const lines = src.split('\n');
+  let inFm = false;
+  let fmFenceCount = 0;
+  return lines.map((line, i) => {
+    // Frontmatter fence
+    if (line === '---') {
+      if (i === 0 && fmFenceCount === 0) {
+        inFm = true; fmFenceCount = 1;
+        return `<span class="hl-fence">---</span>`;
+      }
+      if (inFm && fmFenceCount === 1) {
+        inFm = false; fmFenceCount = 2;
+        return `<span class="hl-fence">---</span>`;
+      }
+      // Block separator inside slide content
+      return `<span class="hl-block-sep">---</span>`;
+    }
+    if (inFm) return highlightFmLine(line);
+    return highlightContentLine(line);
+  }).join('\n');
+}
+
+function highlightFmLine(line) {
+  const m = line.match(/^(\s*)([a-zA-Z_][a-zA-Z0-9_-]*)(\s*:\s*)(.*)$/);
+  if (!m) return escHtmlBasic(line);
+  const [, indent, key, sep, value] = m;
+  return `${escHtmlBasic(indent)}<span class="hl-fm-key">${escHtmlBasic(key)}</span>${escHtmlBasic(sep)}<span class="hl-fm-value">${escHtmlBasic(value)}</span>`;
+}
+
+function highlightContentLine(line) {
+  // Container directive open (e.g. :::split{label="..." align=center})
+  let m = line.match(/^(:::)([a-z][a-z0-9-]*)(\{[^}]*\})?(\s*)$/);
+  if (m) {
+    const [, colons, name, attrs, trail] = m;
+    return `<span class="hl-dir">${colons}${escHtmlBasic(name)}</span>${attrs ? `<span class="hl-attrs">${escHtmlBasic(attrs)}</span>` : ''}${escHtmlBasic(trail)}`;
+  }
+  // Container directive close
+  if (/^:::\s*$/.test(line)) return `<span class="hl-dir">:::</span>`;
+
+  // Leaf directive: ::stat[..]{..}, ::chart{..}, ::note[..]
+  m = line.match(/^(::)([a-z][a-z0-9-]*)(\[[^\]]*\])?(\{[^}]*\})?(.*)$/);
+  if (m) {
+    const [, colons, name, content, attrs, rest] = m;
+    return `<span class="hl-leaf">${colons}${escHtmlBasic(name)}</span>${content ? `<span class="hl-leaf-content">${escHtmlBasic(content)}</span>` : ''}${attrs ? `<span class="hl-attrs">${escHtmlBasic(attrs)}</span>` : ''}${escHtmlBasic(rest)}`;
+  }
+
+  // Heading
+  m = line.match(/^(#{1,6})(\s+)(.+)$/);
+  if (m) {
+    const [, hashes, sp, content] = m;
+    return `<span class="hl-heading">${hashes}${sp}${highlightInline(content)}</span>`;
+  }
+
+  // Bullet
+  m = line.match(/^(\s*)(-)(\s+)(.*)$/);
+  if (m) {
+    const [, indent, dash, sp, rest] = m;
+    return `${escHtmlBasic(indent)}<span class="hl-bullet">${dash}</span>${sp}${highlightBulletContent(rest)}`;
+  }
+
+  return highlightInline(line);
+}
+
+function highlightBulletContent(text) {
+  // :muted / :key as first token
+  const m = text.match(/^:(muted|key)\b(.*)$/);
+  if (m) {
+    return `<span class="hl-marker">:${m[1]}</span>${highlightInline(m[2])}`;
+  }
+  return highlightInline(text);
+}
+
+function highlightInline(text) {
+  // Tokenize to avoid double-replacing inside already-tagged HTML.
+  // Order matters: greedy first.
+  const tokens = [];
+  const patterns = [
+    { re: /\$\$[\s\S]+?\$\$/g,                 cls: 'hl-math' },
+    { re: /(?<!\\)\$[^$\n]+?\$/g,              cls: 'hl-math' },
+    { re: /:primary\[[^\]]*\]/g,               cls: 'hl-primary-call' },
+    { re: /(?<!:):[a-z][a-z0-9-]*\[[^\]]*\]/g, cls: 'hl-primary-call' }, // other inline directives
+    { re: /!\[[^\]]*\]\([^)]+\)/g,             cls: 'hl-img' },
+    { re: /\*\*[^*\n]+\*\*/g,                  cls: 'hl-bold' },
+    { re: /(?<!\*)\*[^*\n]+\*(?!\*)/g,         cls: 'hl-italic' },
+    { re: /`[^`\n]+`/g,                        cls: 'hl-code' },
+  ];
+  // Collect non-overlapping matches
+  for (const p of patterns) {
+    let m;
+    while ((m = p.re.exec(text)) !== null) {
+      tokens.push({ start: m.index, end: m.index + m[0].length, text: m[0], cls: p.cls });
+    }
+  }
+  tokens.sort((a, b) => a.start - b.start);
+  // Filter overlapping (keep first)
+  const filtered = [];
+  let cursor = 0;
+  for (const t of tokens) {
+    if (t.start < cursor) continue;
+    filtered.push(t);
+    cursor = t.end;
+  }
+  // Build HTML
+  let out = '';
+  let pos = 0;
+  for (const t of filtered) {
+    out += escHtmlBasic(text.slice(pos, t.start));
+    if (t.cls === 'hl-img') {
+      const m = t.text.match(/^(!\[)([^\]]*)(\]\()([^)]+)(\))$/);
+      if (m) {
+        out += `<span class="hl-img-bracket">${escHtmlBasic(m[1])}</span>`;
+        out += `<span class="hl-img-alt">${escHtmlBasic(m[2])}</span>`;
+        out += `<span class="hl-img-bracket">${escHtmlBasic(m[3])}</span>`;
+        out += `<span class="hl-img-src">${escHtmlBasic(m[4])}</span>`;
+        out += `<span class="hl-img-bracket">${escHtmlBasic(m[5])}</span>`;
+      } else {
+        out += escHtmlBasic(t.text);
+      }
+    } else {
+      out += `<span class="${t.cls}">${escHtmlBasic(t.text)}</span>`;
+    }
+    pos = t.end;
+  }
+  out += escHtmlBasic(text.slice(pos));
+  return out;
+}
+
+function updateHighlight() {
+  // Trailing space so the last empty line renders with full height in <pre>.
+  highlightEl.innerHTML = highlightMd(editor.value) + '\n ';
+}
 
 // ─ Primary swatches ──────────────────────────────
 
@@ -143,6 +289,7 @@ function setFrontmatterPrimary(name) {
     if (name) {
       md = `---\nprimary: ${name}\n---\n\n${md}`;
       editor.value = md;
+      updateHighlight();
     }
     return;
   }
@@ -175,6 +322,7 @@ function setFrontmatterPrimary(name) {
   }
 
   editor.value = lines.join('\n');
+  updateHighlight();
 }
 
 // ─ Image upload (base64 in browser) ─────────────
@@ -233,10 +381,11 @@ document.addEventListener('drop', (e) => {
 sampleBtn.addEventListener('click', async () => {
   if (editor.value.trim() && !confirm('현재 작성 내용을 덮어쓰시겠습니까?')) return;
   try {
-    const res = await fetch('/example/발표.md');
+    const res = await fetch('/example/sample.md');
     if (!res.ok) throw new Error('Sample fetch failed');
     const md = await res.text();
     editor.value = md;
+    updateHighlight();
 
     // Add sample asset URLs without overwriting user uploads (theirs win).
     const assetNames = new Set();
@@ -279,7 +428,10 @@ const SAVED_KEY = 'sb-ppt-md';
 const saved = localStorage.getItem(SAVED_KEY);
 if (saved) {
   editor.value = saved;
+  updateHighlight();
   convert();
+} else {
+  updateHighlight();
 }
 
 // Auto-save to localStorage
@@ -468,6 +620,7 @@ function insertAtCursor(text) {
   const newPos = start + insertion.length;
   editor.selectionStart = editor.selectionEnd = newPos;
   editor.focus();
+  updateHighlight();
   localStorage.setItem(SAVED_KEY, editor.value);
   convert();
 }

@@ -4,8 +4,8 @@ import * as path from 'node:path';
 import { convertMd } from './convert.js';
 
 const args = process.argv.slice(2);
-const SRC = args[0] ?? path.resolve(import.meta.dir, '../example/발표.md');
-const OUT = args[1] ?? path.resolve(import.meta.dir, '../example/발표.built.html');
+const SRC = args[0] ?? path.resolve(import.meta.dir, '../example/sample.md');
+const OUT = args[1] ?? path.resolve(import.meta.dir, '../example/sample.built.html');
 
 const md = fs.readFileSync(SRC, 'utf8');
 const deckStageScript = fs.readFileSync(

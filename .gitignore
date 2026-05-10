@@ -5,4 +5,5 @@ node_modules/
 
 # Generated artifacts (rebuild on demand)
 example/*.built.html
+example/발표.built.html
 docs/templates.built.html

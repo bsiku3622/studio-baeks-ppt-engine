@@ -7,7 +7,6 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "vercel dev",
     "build:engine": "cd engine && bun run build",
     "build:templates": "cd engine && bun run build:templates"
   },
@@ -16,6 +15,7 @@
     "katex": "^0.16.10",
     "remark-directive": "^3.0.0",
     "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "remark-parse": "^11.0.0",
     "unified": "^11.0.5",

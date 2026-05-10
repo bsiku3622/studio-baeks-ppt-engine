@@ -112,19 +112,19 @@
     font-size: var(--type-body);
     font-weight: 500;
     line-height: 1.4;
-    padding-left: 36px;
-    position: relative;
+    display: grid;
+    grid-template-columns: 16px 1fr;
+    column-gap: 20px;
+    align-items: center;          /* dash centers with bullet content row */
     max-width: 1400px;
   }
   ul.bullets > li::before {
     content: "";
-    position: absolute;
-    left: 0;
-    top: 0.7em;
-    width: 16px;
     height: 1px;
     background: var(--fg);
+    align-self: center;
   }
+  ul.bullets > li > .li-content { min-width: 0; }
   ul.bullets > li.muted-item { color: var(--fg-muted); }
   ul.bullets > li.muted-item::before { background: var(--fg-muted); }
   ul.bullets > li.key-item { color: var(--fg); font-weight: 700; }
@@ -287,11 +287,11 @@
   section[data-align="right"] .image-caption {
     text-align: right;
   }
-  /* When centered/right-aligned, hide bullet markers and reset padding so
-     bullets don't look offset. */
+  /* When centered/right-aligned, hide bullet markers and collapse the
+     marker column so the text doesn't look offset. */
   section[data-align="center"] ul.bullets > li,
   section[data-align="right"]  ul.bullets > li {
-    padding-left: 0;
+    grid-template-columns: 1fr;
     max-width: none;
   }
   section[data-align="center"] ul.bullets > li::before,
@@ -320,6 +320,49 @@
   .stack[data-gap="medium"] { gap: 32px; }
   .stack[data-gap="large"]  { gap: 64px; }
   .stack-block { width: 100%; }
+
+  /* ─ v2 :::table — markdown tables, slide-friendly ─────────── */
+  table.md-table {
+    width: 100%;
+    max-width: 1400px;
+    border-collapse: collapse;
+    margin: 8px 0 16px;
+    font-size: 26px;
+    line-height: 1.3;
+  }
+  table.md-table th,
+  table.md-table td {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--rule);
+    text-align: left;
+  }
+  table.md-table th {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--fg-muted);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-bottom: 2px solid var(--fg);
+    background: var(--bg-panel);
+  }
+  table.md-table tbody tr:nth-child(even) td { background: rgba(0, 0, 0, 0.02); }
+  table.md-table .primary { color: var(--sb-color-primary-s500); font-weight: 700; }
+
+  /* ─ v2 :::chart / :::plot — SVG charts ────────────────────── */
+  .chart-stage,
+  .plot-stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+  }
+  .chart-stage svg,
+  .plot-stage svg {
+    width: 100%;
+    height: auto;
+    max-height: 70vh;
+  }
 
   /* ─ v2 :::image — large image with optional caption(s) ────── */
   .image-stage {

@@ -129,7 +129,39 @@ main {
 .pane { position: relative; overflow: hidden; min-width: 0; }
 .editor-pane { border-right: 1px solid var(--rule); }
 
+/* ─ Editor with syntax-highlight overlay ───────────────────────── */
+.editor-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* Highlight layer — sits behind textarea, exact-match metrics.
+   Sized by content (so transform-based scroll sync works). */
+#editor-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  padding: 20px 24px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+  white-space: pre;
+  pointer-events: none;
+  color: var(--fg);
+  z-index: 0;
+  box-sizing: border-box;
+  word-spacing: 0;
+  will-change: transform;
+}
+
 #editor {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   border: none;
@@ -138,14 +170,43 @@ main {
   font-size: 13px;
   line-height: 1.6;
   letter-spacing: 0.01em;
-  background: var(--bg);
-  color: var(--fg);
+  background: transparent;
+  color: transparent;          /* hide raw text — pre below shows colored version */
+  caret-color: var(--fg);      /* keep cursor visible */
   resize: none;
   outline: none;
   white-space: pre;
   overflow-wrap: normal;
-  overflow-x: auto;
+  overflow: auto;
+  z-index: 1;
+  box-sizing: border-box;
+  word-spacing: 0;
 }
+#editor::placeholder { color: var(--fg-muted); }
+#editor::selection {
+  background: rgba(200, 68, 42, 0.25);
+  color: transparent;
+}
+
+/* Highlight token colors */
+#editor-highlight .hl-fence       { color: var(--fg-subtle); }
+#editor-highlight .hl-fm-key      { color: var(--fg-muted); font-weight: 500; }
+#editor-highlight .hl-fm-value    { color: var(--fg); }
+#editor-highlight .hl-dir         { color: var(--primary); font-weight: 600; }
+#editor-highlight .hl-leaf        { color: oklch(0.46 0.115 200); font-weight: 500; }   /* teal-ish */
+#editor-highlight .hl-attrs       { color: var(--fg-muted); }
+#editor-highlight .hl-leaf-content{ color: var(--fg); }
+#editor-highlight .hl-block-sep   { color: var(--fg-subtle); font-weight: 600; }
+#editor-highlight .hl-heading     { color: var(--fg); font-weight: 700; }
+#editor-highlight .hl-bullet      { color: var(--fg-muted); }
+#editor-highlight .hl-marker      { color: var(--primary); font-weight: 600; }
+#editor-highlight .hl-primary-call{ color: var(--primary); font-weight: 600; }
+#editor-highlight .hl-img-bracket { color: var(--fg-subtle); }
+#editor-highlight .hl-img-alt     { color: var(--fg-muted); }
+#editor-highlight .hl-img-src     { color: oklch(0.46 0.115 200); }
+#editor-highlight .hl-math        { color: oklch(0.46 0.110 130); font-style: italic; }  /* sage */
+#editor-highlight .hl-bold        { font-weight: 700; }
+#editor-highlight .hl-italic      { font-style: italic; }
 
 #preview {
   width: 100%;

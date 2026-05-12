@@ -407,19 +407,46 @@ let pendingNoteSlide = -1;
 let pendingNoteContent = '';
 let notesWriteInProgress = false;
 
+// Names of all top-level slide directives. Anything else (e.g. speaker-note)
+// is treated as a nested sub-directive. Mirrors `renderSlide` in engine/convert.ts.
+const SLIDE_DIRECTIVES = new Set([
+  'cover', 'split', 'bullets', 'divider', 'stats', 'charts',
+  'disclaimer', 'thanks', 'image', 'stack', 'chart', 'plot',
+]);
+
+// Lenient to match the engine's remark-directive parser: encountering a new
+// slide directive while one is open auto-closes the previous (closeLine = line
+// just before the new opener). At EOF, any open slide is also auto-closed.
+// This handles the common authoring mistake where a slide ends with a
+// `:::speaker-note ... :::` block and the author forgets to add the slide's
+// own closing `:::` after the note.
 function findTopLevelSlides(md) {
   const lines = md.split('\n');
   const out = [];
-  const stack = [];
+  let current = null;
+  let nestedDepth = 0;
   for (let i = 0; i < lines.length; i++) {
     const openM = lines[i].match(/^:::([a-z][a-z0-9-]*)(?:\{[^}]*\})?\s*$/);
     if (openM) {
-      stack.push({ openLine: i, name: openM[1], isTop: stack.length === 0 });
-    } else if (/^:::\s*$/.test(lines[i])) {
-      const top = stack.pop();
-      if (top && top.isTop) out.push({ openLine: top.openLine, closeLine: i, name: top.name });
+      const name = openM[1];
+      if (SLIDE_DIRECTIVES.has(name)) {
+        if (current) out.push({ ...current, closeLine: i - 1, autoClosed: true });
+        current = { openLine: i, name };
+        nestedDepth = 0;
+      } else if (current) {
+        nestedDepth++;
+      }
+      continue;
+    }
+    if (/^:::\s*$/.test(lines[i])) {
+      if (nestedDepth > 0) nestedDepth--;
+      else if (current) {
+        out.push({ ...current, closeLine: i, autoClosed: false });
+        current = null;
+      }
     }
   }
+  if (current) out.push({ ...current, closeLine: lines.length - 1, autoClosed: true });
   return out;
 }
 

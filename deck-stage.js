@@ -877,8 +877,8 @@
         <span class="divider"></span>
         <button class="btn reset" type="button" aria-label="Reset to first slide" title="Reset (R)">Reset<span class="kbd">R</span></button>
         <span class="divider"></span>
-        <button class="btn fullscreen" type="button" aria-label="Fullscreen" title="전체화면 (F)">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6V3h3M13 6V3h-3M3 10v3h3M13 10v3h-3"/></svg>
+        <button class="btn ppt-view" type="button" aria-label="PPT view in new window" title="PPT 뷰 — 새 창에 deck를 띄움 (V)">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3h3v3"/><path d="M13 3l-5 5"/><path d="M11 9v3.5a.5.5 0 0 1-.5.5H3.5a.5.5 0 0 1-.5-.5V5.5a.5.5 0 0 1 .5-.5H7"/></svg>
         </button>
         <button class="btn presenter" type="button" aria-label="Presenter view" title="발표자 뷰 — 새 창에 노트/타이머/다음 슬라이드 표시 (P)">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="9" height="7" rx="1"/><path d="M14 6v6.5a.5.5 0 0 1-.5.5H7"/></svg>
@@ -888,7 +888,7 @@
       overlay.querySelector('.prev').addEventListener('click', () => this._advance(-1, 'click'));
       overlay.querySelector('.next').addEventListener('click', () => this._advance(1, 'click'));
       overlay.querySelector('.reset').addEventListener('click', () => this._go(0, 'click'));
-      overlay.querySelector('.fullscreen').addEventListener('click', () => this._toggleFullscreen());
+      overlay.querySelector('.ppt-view').addEventListener('click', () => this._openPPTView());
       overlay.querySelector('.presenter').addEventListener('click', () => this._openPresenter());
 
       // Thumbnail rail + context menu. Thumbnails are populated in
@@ -1114,13 +1114,19 @@
       }
     }
 
-    _toggleFullscreen() {
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
+    _openPPTView() {
+      if (this._pptViewWin && !this._pptViewWin.closed) {
+        try { this._pptViewWin.focus(); } catch (e) {}
         return;
       }
-      const target = document.documentElement;
-      if (target.requestFullscreen) target.requestFullscreen().catch(() => {});
+      const base = location.href.split('#')[0];
+      const url = base + '#' + (this._index + 1);
+      const w = window.open(url, 'sb-deck-ppt-view', 'width=1280,height=720,menubar=no,toolbar=no,location=no');
+      if (!w) {
+        console.warn('[deck-stage] PPT view popup was blocked. Allow popups for this page and try again.');
+        return;
+      }
+      this._pptViewWin = w;
     }
 
     _openPresenter() {
@@ -1480,7 +1486,12 @@
         try { if (window.parent && window.parent !== window) window.parent.postMessage(bcast, '*'); } catch (e) {}
         // And to opener when running in a popup (PPT view / presenter view).
         try { if (window.opener && !window.opener.closed) window.opener.postMessage(bcast, '*'); } catch (e) {}
-        // Mirror to the presenter popup (if open) so its preview + notes stay in sync.
+        // Mirror to popups we own so their previews/notes stay in sync.
+        if (this._pptViewWin && !this._pptViewWin.closed) {
+          try { this._pptViewWin.postMessage(bcast, '*'); } catch (e) {}
+        } else if (this._pptViewWin) {
+          this._pptViewWin = null;
+        }
         if (this._presenterWin && !this._presenterWin.closed) {
           try { this._presenterWin.postMessage(bcast, '*'); } catch (e) {}
         } else if (this._presenterWin) {
@@ -1604,6 +1615,19 @@
       if (d && d.type === 'goTo' && typeof d.index === 'number') {
         this._go(d.index, 'api');
       }
+      // 3-way sync: when a popup we own (PPT view, presenter) broadcasts its
+      // slide change, mirror it onto self. When our own opener broadcasts
+      // (we're the popup), follow suit. `reason === 'sync'` marks our own
+      // echoes so we don't ping-pong. The _go index-equality guard also
+      // short-circuits same-slide messages.
+      if (d && typeof d.slideIndexChanged === 'number' && d.reason !== 'init' && d.reason !== 'sync') {
+        const fromOurPopup = (this._pptViewWin && e.source === this._pptViewWin)
+                          || (this._presenterWin && e.source === this._presenterWin);
+        const fromOurOpener = window.opener && e.source === window.opener;
+        if (fromOurPopup || fromOurOpener) {
+          this._go(d.slideIndexChanged, 'sync');
+        }
+      }
     }
 
     _syncRailHidden() {
@@ -1663,8 +1687,8 @@
         this._go(this._slides.length - 1, 'keyboard');
       } else if (key === 'r' || key === 'R') {
         this._go(0, 'keyboard');
-      } else if (key === 'f' || key === 'F') {
-        this._toggleFullscreen();
+      } else if (key === 'v' || key === 'V') {
+        this._openPPTView();
       } else if (key === 'p' || key === 'P') {
         this._openPresenter();
       } else if (/^[0-9]$/.test(key)) {

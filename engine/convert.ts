@@ -311,8 +311,62 @@ function extractSpeakerNote(d: ContainerDirective): string {
   }) as any;
   if (collected.length === 0) return '';
   return collected
-    .map((nc) => (nc.children ?? []).map((c: any) => renderBlock(c as BlockContent)).join('\n'))
+    .map((nc) => (nc.children ?? []).map((c: any) => renderNotesBlock(c as BlockContent)).join('\n'))
     .join('\n');
+}
+
+// Plain markdown → HTML for the presenter notes panel. Mirrors `renderBlock`
+// but emits semantic <ul><li> instead of the slide-body `<ul class="bullets">`
+// grid markup, so the notes panel's own CSS (small body text) applies cleanly
+// instead of inheriting the 1920×1080 slide-body bullet styling.
+function renderNotesBlock(node: BlockContent): string {
+  switch (node.type) {
+    case 'paragraph':
+      return `<p>${renderInline((node as Paragraph).children)}</p>`;
+    case 'list':
+      return renderNotesList(node as List);
+    case 'heading': {
+      const h = node as Heading;
+      return `<h${h.depth}>${renderInline(h.children)}</h${h.depth}>`;
+    }
+    case 'table':
+      return renderTable(node as any);
+    case 'math':
+      return katex.renderToString((node as any).value, {
+        throwOnError: false,
+        displayMode: true,
+        output: 'html',
+      });
+    default:
+      return '';
+  }
+}
+
+function renderNotesList(list: List): string {
+  const items = list.children
+    .filter((c): c is ListItem => c.type === 'listItem')
+    .map((li) => {
+      // Strip leading :muted / :key marker (slide-body only; meaningless in notes).
+      const first = li.children[0];
+      if (first?.type === 'paragraph') {
+        const head = (first as Paragraph).children[0];
+        if (head?.type === 'textDirective') {
+          const name = (head as TextDirective).name;
+          if (name === 'muted' || name === 'key') {
+            (first as Paragraph).children.shift();
+            const next = (first as Paragraph).children[0];
+            if (next?.type === 'text' && /^\s/.test((next as any).value)) {
+              (next as any).value = (next as any).value.replace(/^\s+/, '');
+            }
+          }
+        }
+      }
+      const body = (li.children.length === 1 && li.children[0].type === 'paragraph')
+        ? renderInline((li.children[0] as Paragraph).children)
+        : li.children.map((c) => renderNotesBlock(c as BlockContent)).join('');
+      return `<li>${body}</li>`;
+    });
+  return `<ul>${items.join('')}</ul>`;
 }
 
 function dataLabel(label: string | undefined): string {

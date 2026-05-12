@@ -235,6 +235,56 @@
       margin: 0 2px;
     }
 
+    .toggle {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 10px 0 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.72);
+      cursor: default;
+      user-select: none;
+      transition: background 140ms ease, color 140ms ease;
+    }
+    .toggle:hover { background: rgba(255,255,255,0.12); color: #fff; }
+    .toggle input {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+      pointer-events: none;
+    }
+    .toggle-dot {
+      position: relative;
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      border: 1px solid rgba(255,255,255,0.45);
+      background: transparent;
+      transition: background 120ms ease, border-color 120ms ease;
+      flex-shrink: 0;
+    }
+    .toggle input:checked + .toggle-dot {
+      background: rgba(255,255,255,0.92);
+      border-color: rgba(255,255,255,0.92);
+    }
+    .toggle input:checked + .toggle-dot::after {
+      content: '';
+      position: absolute;
+      left: 3px;
+      top: 0.5px;
+      width: 4px;
+      height: 7px;
+      border: solid #000;
+      border-width: 0 1.5px 1.5px 0;
+      transform: rotate(45deg);
+    }
+
     /* ── Thumbnail rail ──────────────────────────────────────────────────
        Fixed column on the left; each thumbnail is a static deep-clone of
        the light-DOM slide scaled into a 16:9 (or design-aspect) frame. The
@@ -560,6 +610,16 @@
     }
 
     connectedCallback() {
+      // Presenter view: same HTML reused via ?presenter=1 popup OR via the
+      // window.__sb_presenter flag (set when the editor injects the deck into
+      // a popup via blob URL, where query strings on the URL aren't honored).
+      // Renders an alternate UI and syncs bidirectionally with the opener.
+      if (/[?&]presenter=1/.test(location.search) || window.__sb_presenter === true) {
+        this._presenterMode = true;
+        this._loadNotes();
+        this._renderPresenter();
+        return;
+      }
       // Presenter-view popup loads deckUrl?_snthumb=...#N for its prev/cur/
       // next thumbnails — the rail has no business rendering inside those
       // (wrong scale, and it offsets the stage so the thumb shows a gutter).
@@ -726,6 +786,14 @@
     }
 
     disconnectedCallback() {
+      if (this._presenterMode) {
+        window.removeEventListener('message', this._onPresenterMessage);
+        window.removeEventListener('keydown', this._onPresenterKey);
+        if (this._pResize) window.removeEventListener('resize', this._pResize);
+        if (this._pOpenerWatch) clearInterval(this._pOpenerWatch);
+        if (this._pTimerInterval) clearInterval(this._pTimerInterval);
+        return;
+      }
       window.removeEventListener('keydown', this._onKey);
       window.removeEventListener('resize', this._onResize);
       window.removeEventListener('mousemove', this._onMouseMove);
@@ -808,11 +876,20 @@
         </button>
         <span class="divider"></span>
         <button class="btn reset" type="button" aria-label="Reset to first slide" title="Reset (R)">Reset<span class="kbd">R</span></button>
+        <span class="divider"></span>
+        <button class="btn fullscreen" type="button" aria-label="Fullscreen" title="전체화면 (F)">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6V3h3M13 6V3h-3M3 10v3h3M13 10v3h-3"/></svg>
+        </button>
+        <button class="btn presenter" type="button" aria-label="Presenter view" title="발표자 뷰 — 새 창에 노트/타이머/다음 슬라이드 표시 (P)">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="9" height="7" rx="1"/><path d="M14 6v6.5a.5.5 0 0 1-.5.5H7"/></svg>
+        </button>
       `;
 
       overlay.querySelector('.prev').addEventListener('click', () => this._advance(-1, 'click'));
       overlay.querySelector('.next').addEventListener('click', () => this._advance(1, 'click'));
       overlay.querySelector('.reset').addEventListener('click', () => this._go(0, 'click'));
+      overlay.querySelector('.fullscreen').addEventListener('click', () => this._toggleFullscreen());
+      overlay.querySelector('.presenter').addEventListener('click', () => this._openPresenter());
 
       // Thumbnail rail + context menu. Thumbnails are populated in
       // _renderRail() after _collectSlides().
@@ -1037,6 +1114,332 @@
       }
     }
 
+    _toggleFullscreen() {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+        return;
+      }
+      const target = document.documentElement;
+      if (target.requestFullscreen) target.requestFullscreen().catch(() => {});
+    }
+
+    _openPresenter() {
+      if (this._presenterWin && !this._presenterWin.closed) {
+        try { this._presenterWin.focus(); } catch (e) {}
+        return;
+      }
+      const base = location.href.split('#')[0];
+      const sep = base.includes('?') ? '&' : '?';
+      const url = base + sep + 'presenter=1#' + (this._index + 1);
+      const w = window.open(url, 'sb-deck-presenter', 'width=1100,height=720,menubar=no,toolbar=no,location=no');
+      if (!w) {
+        console.warn('[deck-stage] Presenter window was blocked. Allow popups for this page and try again.');
+        return;
+      }
+      this._presenterWin = w;
+    }
+
+    // ── Presenter-mode (popup window) ──────────────────────────────────
+    // The popup loads the same HTML with ?presenter=1. We skip the normal
+    // deck render and build a KeyNote-style UI: current + next slide
+    // previews, notes panel, slide counter, timer, nav. Bidirectional sync
+    // with the opener via postMessage.
+
+    _renderPresenter() {
+      const presenterStyle = `
+        html, body {
+          background: #1a1a1a !important;
+          color: #f5f5f5 !important;
+          height: 100%;
+          margin: 0;
+          overflow: hidden;
+          font-family: 'Apple SD Gothic Neo', 'Pretendard', system-ui, -apple-system, sans-serif;
+        }
+        body > deck-stage { display: none !important; }
+        #sb-presenter {
+          position: fixed; inset: 0;
+          display: grid;
+          grid-template-rows: auto 1fr auto auto;
+          gap: 14px; padding: 16px 22px;
+          box-sizing: border-box;
+        }
+        #sb-presenter .hdr {
+          display: flex; justify-content: space-between; align-items: center;
+          padding-bottom: 10px;
+          border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        #sb-presenter .hdr .title {
+          font-size: 15px; font-weight: 500; color: rgba(255,255,255,0.85);
+          letter-spacing: 0.01em;
+        }
+        #sb-presenter .timer {
+          background: rgba(255,255,255,0.08);
+          border: 1px solid rgba(255,255,255,0.15);
+          color: #fff; font-size: 13px; font-variant-numeric: tabular-nums;
+          padding: 6px 12px; border-radius: 999px; cursor: pointer;
+          transition: background 120ms ease;
+          letter-spacing: 0.02em;
+        }
+        #sb-presenter .timer:hover { background: rgba(255,255,255,0.16); }
+        #sb-presenter .timer[data-running] { background: rgba(94, 192, 130, 0.18); border-color: rgba(94, 192, 130, 0.4); }
+        #sb-presenter .previews {
+          display: grid; grid-template-columns: 2fr 1fr; gap: 14px;
+          min-height: 0;
+        }
+        #sb-presenter .preview {
+          position: relative; background: #000;
+          border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;
+          overflow: hidden; aspect-ratio: 16/9;
+          align-self: start;
+        }
+        #sb-presenter .frame {
+          position: absolute; inset: 0; overflow: hidden; background: #fff;
+        }
+        #sb-presenter .preview.next .frame { background: #1f1f1f; }
+        #sb-presenter .frame.empty::after {
+          content: 'End of deck'; position: absolute; inset: 0;
+          display: flex; align-items: center; justify-content: center;
+          color: rgba(255,255,255,0.4); font-size: 13px; letter-spacing: 0.04em;
+        }
+        #sb-presenter .badge {
+          position: absolute; top: 8px; left: 10px;
+          background: rgba(0,0,0,0.65); color: rgba(255,255,255,0.85);
+          font-size: 10px; padding: 3px 8px; border-radius: 3px;
+          letter-spacing: 0.08em; font-weight: 500; pointer-events: none;
+          z-index: 1;
+        }
+        #sb-presenter .notes-panel {
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 6px; padding: 14px 18px;
+          overflow-y: auto; max-height: 240px;
+          line-height: 1.6; font-size: 15px; color: rgba(255,255,255,0.92);
+        }
+        #sb-presenter .notes-empty {
+          color: rgba(255,255,255,0.4); font-style: italic; font-size: 13px;
+        }
+        #sb-presenter .notes-body p { margin: 0 0 10px; }
+        #sb-presenter .notes-body p:last-child { margin-bottom: 0; }
+        #sb-presenter .notes-body ul, #sb-presenter .notes-body ol { margin: 0 0 10px; padding-left: 22px; }
+        #sb-presenter .notes-body li { margin-bottom: 4px; }
+        #sb-presenter .notes-body strong { color: #fff; font-weight: 600; }
+        #sb-presenter .notes-body em { color: rgba(255,255,255,0.96); }
+        #sb-presenter .notes-body code {
+          background: rgba(255,255,255,0.1); padding: 1px 5px; border-radius: 3px;
+          font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.9em;
+        }
+        #sb-presenter .notes-body h1, #sb-presenter .notes-body h2, #sb-presenter .notes-body h3 {
+          font-size: 15px; margin: 12px 0 6px; color: #fff;
+        }
+        #sb-presenter .ftr {
+          display: flex; align-items: center; justify-content: space-between;
+          padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        #sb-presenter .nav {
+          background: rgba(255,255,255,0.08);
+          border: 1px solid rgba(255,255,255,0.15);
+          color: #fff; font-size: 13px; padding: 8px 18px;
+          border-radius: 4px; cursor: pointer;
+          transition: background 120ms ease;
+        }
+        #sb-presenter .nav:hover { background: rgba(255,255,255,0.18); }
+        #sb-presenter .nav:disabled { opacity: 0.35; cursor: not-allowed; }
+        #sb-presenter .count {
+          font-variant-numeric: tabular-nums; font-size: 14px;
+          color: rgba(255,255,255,0.75);
+        }
+        #sb-presenter .count .cur { color: #fff; font-weight: 600; font-size: 16px; }
+        /* Slide clones live in light DOM under .frame, so page-level slide
+           CSS still applies. We just pin their box to 1920x1080 and scale. */
+        #sb-presenter .frame > section {
+          position: absolute !important;
+          left: 0 !important; top: 0 !important;
+          width: 1920px !important; height: 1080px !important;
+          opacity: 1 !important;
+          visibility: visible !important;
+          pointer-events: none !important;
+          box-sizing: border-box !important;
+          transform-origin: top left;
+        }
+      `;
+      const styleEl = document.createElement('style');
+      styleEl.textContent = presenterStyle;
+      document.head.appendChild(styleEl);
+
+      const root = document.createElement('div');
+      root.id = 'sb-presenter';
+      const titleText = (document.title || 'Presenter').replace(/ — Presenter$/, '');
+      root.innerHTML = `
+        <div class="hdr">
+          <div class="title"></div>
+          <button class="timer" type="button" title="클릭: 시작/리셋">⏱ 00:00</button>
+        </div>
+        <div class="previews">
+          <div class="preview current"><div class="badge">CURRENT</div><div class="frame"></div></div>
+          <div class="preview next"><div class="badge">NEXT</div><div class="frame"></div></div>
+        </div>
+        <div class="notes-panel">
+          <div class="notes-empty">이 슬라이드에는 발표자 노트가 없습니다.</div>
+          <div class="notes-body" hidden></div>
+        </div>
+        <div class="ftr">
+          <button class="nav prev" type="button">← Prev</button>
+          <div class="count"><span class="cur">1</span> <span style="color:rgba(255,255,255,0.35);margin:0 4px;">/</span> <span class="tot">1</span></div>
+          <button class="nav next" type="button">Next →</button>
+        </div>
+      `;
+      root.querySelector('.title').textContent = titleText;
+      document.body.appendChild(root);
+      document.title = titleText + ' — Presenter';
+
+      this._presenterRoot = root;
+      this._pFrameCur = root.querySelector('.preview.current .frame');
+      this._pFrameNext = root.querySelector('.preview.next .frame');
+      this._pNotesEmpty = root.querySelector('.notes-empty');
+      this._pNotesBody = root.querySelector('.notes-body');
+      this._pCur = root.querySelector('.cur');
+      this._pTot = root.querySelector('.tot');
+      this._pTimerBtn = root.querySelector('.timer');
+
+      root.querySelector('.nav.prev').addEventListener('click', () => this._presenterNav(-1));
+      root.querySelector('.nav.next').addEventListener('click', () => this._presenterNav(1));
+      this._pTimerBtn.addEventListener('click', () => this._presenterToggleTimer());
+
+      this._onPresenterMessage = this._onPresenterMessage.bind(this);
+      this._onPresenterKey = this._onPresenterKey.bind(this);
+      window.addEventListener('message', this._onPresenterMessage);
+      window.addEventListener('keydown', this._onPresenterKey);
+
+      const h = (location.hash || '').match(/^#(\d+)$/);
+      this._index = h ? Math.max(0, parseInt(h[1], 10) - 1) : 0;
+      this._slides = Array.from(this.children).filter((c) => c.nodeType === 1);
+
+      // Initial render after layout so getBoundingClientRect is accurate.
+      requestAnimationFrame(() => this._renderPresenterFrames());
+
+      this._pResize = () => this._scalePresenterFrames();
+      window.addEventListener('resize', this._pResize);
+
+      // If opener closes, close ourselves.
+      this._pOpenerWatch = setInterval(() => {
+        if (!window.opener || window.opener.closed) {
+          clearInterval(this._pOpenerWatch);
+          try { window.close(); } catch (e) {}
+        }
+      }, 1000);
+    }
+
+    _renderPresenterFrames() {
+      const slides = this._slides || [];
+      const total = slides.length;
+      this._pTot.textContent = String(total);
+      if (total === 0) return;
+      const curIdx = Math.max(0, Math.min(total - 1, this._index));
+      this._index = curIdx;
+      this._pCur.textContent = String(curIdx + 1);
+      const nextIdx = this._findNextVisible(curIdx, 1);
+      this._fillPresenterFrame(this._pFrameCur, slides[curIdx]);
+      this._fillPresenterFrame(this._pFrameNext, nextIdx >= 0 ? slides[nextIdx] : null);
+      const noteHtml = (this._notes && this._notes[curIdx]) || '';
+      if (noteHtml && noteHtml.trim()) {
+        this._pNotesEmpty.hidden = true;
+        this._pNotesBody.hidden = false;
+        this._pNotesBody.innerHTML = noteHtml;
+      } else {
+        this._pNotesEmpty.hidden = false;
+        this._pNotesBody.hidden = true;
+        this._pNotesBody.innerHTML = '';
+      }
+      // Disable nav buttons at deck edges.
+      this._presenterRoot.querySelector('.nav.prev').disabled = this._findNextVisible(curIdx, -1) < 0;
+      this._presenterRoot.querySelector('.nav.next').disabled = nextIdx < 0;
+      this._scalePresenterFrames();
+    }
+
+    _fillPresenterFrame(frame, slide) {
+      frame.innerHTML = '';
+      if (!slide) { frame.classList.add('empty'); return; }
+      frame.classList.remove('empty');
+      const clone = slide.cloneNode(true);
+      clone.removeAttribute('data-deck-active');
+      clone.removeAttribute('data-deck-skip');
+      clone.removeAttribute('data-deck-last-visible');
+      frame.appendChild(clone);
+    }
+
+    _scalePresenterFrames() {
+      [this._pFrameCur, this._pFrameNext].forEach((frame) => {
+        if (!frame) return;
+        const r = frame.getBoundingClientRect();
+        if (r.width === 0) return;
+        const scale = r.width / 1920;
+        const section = frame.querySelector('section');
+        if (section) section.style.transform = `scale(${scale})`;
+      });
+    }
+
+    _findNextVisible(from, dir) {
+      const slides = this._slides || [];
+      let i = from + dir;
+      while (i >= 0 && i < slides.length && slides[i].hasAttribute('data-deck-skip')) i += dir;
+      if (i < 0 || i >= slides.length) return -1;
+      return i;
+    }
+
+    _presenterNav(dir) {
+      const target = this._findNextVisible(this._index, dir);
+      if (target < 0) return;
+      try { window.opener && window.opener.postMessage({ type: 'goTo', index: target }, '*'); } catch (e) {}
+    }
+
+    _onPresenterMessage(e) {
+      const d = e.data;
+      if (!d || typeof d !== 'object') return;
+      if (typeof d.slideIndexChanged !== 'number') return;
+      if (e.source && e.source !== window.opener) return;
+      this._index = d.slideIndexChanged;
+      if (Array.isArray(d.deckSkipped)) {
+        this._slides.forEach((s, i) => {
+          if (d.deckSkipped.includes(i)) s.setAttribute('data-deck-skip', '');
+          else s.removeAttribute('data-deck-skip');
+        });
+      }
+      this._renderPresenterFrames();
+    }
+
+    _onPresenterKey(e) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key;
+      let handled = true;
+      if (k === 'ArrowRight' || k === 'PageDown' || k === ' ' || k === 'Spacebar') this._presenterNav(1);
+      else if (k === 'ArrowLeft' || k === 'PageUp') this._presenterNav(-1);
+      else if (k === 'Home') { try { window.opener && window.opener.postMessage({ type: 'goTo', index: 0 }, '*'); } catch (e) {} }
+      else if (k === 'End') { try { window.opener && window.opener.postMessage({ type: 'goTo', index: this._slides.length - 1 }, '*'); } catch (e) {} }
+      else handled = false;
+      if (handled) e.preventDefault();
+    }
+
+    _presenterToggleTimer() {
+      if (this._pTimerInterval) {
+        clearInterval(this._pTimerInterval);
+        this._pTimerInterval = null;
+        this._pTimerStart = null;
+        this._pTimerBtn.textContent = '⏱ 00:00';
+        this._pTimerBtn.removeAttribute('data-running');
+        return;
+      }
+      this._pTimerStart = Date.now();
+      this._pTimerBtn.setAttribute('data-running', '');
+      const tick = () => {
+        const elapsed = Math.floor((Date.now() - this._pTimerStart) / 1000);
+        const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+        const ss = String(elapsed % 60).padStart(2, '0');
+        this._pTimerBtn.textContent = `⏱ ${mm}:${ss}`;
+      };
+      tick();
+      this._pTimerInterval = setInterval(tick, 500);
+    }
+
     _restoreIndex() {
       // The host's ?slide= param is delivered as a #<int> hash (1-indexed) on
       // the iframe src. No hash → slide 1; the deck itself keeps no position
@@ -1070,7 +1473,19 @@
 
       if (broadcast) {
         // (1) Legacy: host-window postMessage for speaker-notes renderers.
-        try { window.postMessage({ slideIndexChanged: curr, deckTotal: this._slides.length, deckSkipped: this._skippedIndices() }, '*'); } catch (e) {}
+        const bcast = { slideIndexChanged: curr, deckTotal: this._slides.length, deckSkipped: this._skippedIndices(), reason };
+        try { window.postMessage(bcast, '*'); } catch (e) {}
+        // Also broadcast to the parent window when running inside an iframe
+        // (editor preview), so the host can react to slide changes.
+        try { if (window.parent && window.parent !== window) window.parent.postMessage(bcast, '*'); } catch (e) {}
+        // And to opener when running in a popup (PPT view / presenter view).
+        try { if (window.opener && !window.opener.closed) window.opener.postMessage(bcast, '*'); } catch (e) {}
+        // Mirror to the presenter popup (if open) so its preview + notes stay in sync.
+        if (this._presenterWin && !this._presenterWin.closed) {
+          try { this._presenterWin.postMessage(bcast, '*'); } catch (e) {}
+        } else if (this._presenterWin) {
+          this._presenterWin = null;
+        }
 
         // (2) In-page CustomEvent on the <deck-stage> element itself.
         //     Bubbles and composes out of shadow DOM so slide code can listen:
@@ -1184,6 +1599,11 @@
         this._railAnimTimer = setTimeout(() => this.removeAttribute('data-rail-anim'), 220);
       }
       if (d && d.type === '__omelette_rail_enabled') this._enableRail();
+      // External nav (e.g. editor host syncing slide index across re-renders,
+      // or presenter popup driving the main deck).
+      if (d && d.type === 'goTo' && typeof d.index === 'number') {
+        this._go(d.index, 'api');
+      }
     }
 
     _syncRailHidden() {
@@ -1243,6 +1663,10 @@
         this._go(this._slides.length - 1, 'keyboard');
       } else if (key === 'r' || key === 'R') {
         this._go(0, 'keyboard');
+      } else if (key === 'f' || key === 'F') {
+        this._toggleFullscreen();
+      } else if (key === 'p' || key === 'P') {
+        this._openPresenter();
       } else if (/^[0-9]$/.test(key)) {
         // 1..9 jump to that slide; 0 jumps to 10.
         const n = key === '0' ? 9 : parseInt(key, 10) - 1;
@@ -1650,6 +2074,7 @@
       // Re-broadcast so the presenter popup's prev/next thumbnails re-pick
       // the nearest non-skipped slide without waiting for a nav event.
       try { window.postMessage({ slideIndexChanged: this._index, deckTotal: this._slides.length, deckSkipped: this._skippedIndices() }, '*'); } catch (e) {}
+      try { if (window.parent && window.parent !== window) window.parent.postMessage({ slideIndexChanged: this._index, deckTotal: this._slides.length, deckSkipped: this._skippedIndices() }, '*'); } catch (e) {}
     }
 
     _skippedIndices() {

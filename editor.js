@@ -24,6 +24,74 @@ const dropOverlay = document.getElementById('drop-overlay');
 
 const swatches = document.querySelectorAll('.swatch');
 
+const notesInput = document.getElementById('notes-input');
+const notesSlideEl = document.getElementById('notes-slide');
+const pptViewBtn = document.getElementById('ppt-view-btn');
+const presenterBtn = document.getElementById('presenter-btn');
+
+let pptViewWin = null;
+let presenterWin = null;
+
+function openDeckWindow(injectPresenterFlag, name, dimensions) {
+  if (!lastHtml) return null;
+  let html = injectAssets(lastHtml);
+  if (injectPresenterFlag) {
+    html = html.replace(/<head>/i, '<head><script>window.__sb_presenter = true;</script>');
+  }
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, name, dimensions);
+  if (!win) return null;
+  const cleanup = setInterval(() => {
+    if (!win || win.closed) {
+      URL.revokeObjectURL(url);
+      clearInterval(cleanup);
+    }
+  }, 1000);
+  return win;
+}
+
+pptViewBtn.addEventListener('click', () => {
+  if (pptViewWin && !pptViewWin.closed) {
+    try { pptViewWin.focus(); } catch (e) {}
+    return;
+  }
+  pptViewWin = openDeckWindow(false, 'sb-ppt-view', 'width=1280,height=720,menubar=no,toolbar=no,location=no');
+  if (!pptViewWin) {
+    showError('PPT 뷰 윈도우가 차단되었습니다. 브라우저 팝업 허용 후 다시 시도하세요.');
+  }
+});
+
+presenterBtn.addEventListener('click', () => {
+  if (presenterWin && !presenterWin.closed) {
+    try { presenterWin.focus(); } catch (e) {}
+    return;
+  }
+  presenterWin = openDeckWindow(true, 'sb-presenter', 'width=1100,height=720,menubar=no,toolbar=no,location=no');
+  if (!presenterWin) {
+    showError('발표자 윈도우가 차단되었습니다. 브라우저 팝업 허용 후 다시 시도하세요.');
+  }
+});
+
+// Broker: keep iframe / PPT view / presenter view in lockstep. Any one window
+// navigating drives the others. The presenter window speaks `slideIndexChanged`
+// (its `_onPresenterMessage`); regular deck-stage instances speak `goTo`.
+function forwardSlideTo(targetWin, index, isPresenter) {
+  if (!targetWin || targetWin.closed) return;
+  try {
+    const msg = isPresenter
+      ? { slideIndexChanged: index, reason: 'sync' }
+      : { type: 'goTo', index };
+    targetWin.postMessage(msg, '*');
+  } catch (e) {}
+}
+
+function fanOutNav(sourceWin, index) {
+  if (sourceWin !== preview.contentWindow) forwardSlideTo(preview.contentWindow, index, false);
+  if (sourceWin !== pptViewWin) forwardSlideTo(pptViewWin, index, false);
+  if (sourceWin !== presenterWin) forwardSlideTo(presenterWin, index, true);
+}
+
 // State
 const assetMap = new Map();   // filename → dataURL
 let lastHtml = '';            // last rendered HTML (with original ./assets/ paths)
@@ -79,6 +147,9 @@ async function convert() {
 
     slideCountEl.textContent = `${slideCount} 슬라이드`;
     convertTimeEl.textContent = `변환 ${elapsedMs}ms`;
+    pptViewBtn.disabled = false;
+    presenterBtn.disabled = false;
+    refreshNotesBox();
     errorEl.textContent = '';
     downloadHtmlBtn.disabled = false;
     primaryStatusEl.textContent = `primary: ${fmPrimary}`;
@@ -325,6 +396,174 @@ function setFrontmatterPrimary(name) {
   updateHighlight();
 }
 
+// ─ Speaker notes (MD-bound input below preview) ──
+// Source of truth = the MD textarea. The box reflects the *current* slide's
+// :::speaker-note block; edits in the box splice the MD; edits in the MD
+// refresh the box. Slide changes in the iframe drive `currentSlideIndex`.
+
+let currentSlideIndex = 0;
+let notesFlushTimer = null;
+let pendingNoteSlide = -1;
+let pendingNoteContent = '';
+let notesWriteInProgress = false;
+
+function findTopLevelSlides(md) {
+  const lines = md.split('\n');
+  const out = [];
+  const stack = [];
+  for (let i = 0; i < lines.length; i++) {
+    const openM = lines[i].match(/^:::([a-z][a-z0-9-]*)(?:\{[^}]*\})?\s*$/);
+    if (openM) {
+      stack.push({ openLine: i, name: openM[1], isTop: stack.length === 0 });
+    } else if (/^:::\s*$/.test(lines[i])) {
+      const top = stack.pop();
+      if (top && top.isTop) out.push({ openLine: top.openLine, closeLine: i, name: top.name });
+    }
+  }
+  return out;
+}
+
+function findSpeakerNoteRange(lines, slide) {
+  for (let i = slide.openLine + 1; i < slide.closeLine; i++) {
+    if (!/^:::speaker-note(?:\{[^}]*\})?\s*$/.test(lines[i])) continue;
+    let depth = 1;
+    for (let j = i + 1; j < slide.closeLine; j++) {
+      if (/^:::[a-z][a-z0-9-]*(?:\{[^}]*\})?\s*$/.test(lines[j])) depth++;
+      else if (/^:::\s*$/.test(lines[j])) {
+        depth--;
+        if (depth === 0) return { openLine: i, closeLine: j };
+      }
+    }
+  }
+  return null;
+}
+
+function getNoteContent(md, slideIndex) {
+  const slides = findTopLevelSlides(md);
+  if (slideIndex < 0 || slideIndex >= slides.length) return null;
+  const lines = md.split('\n');
+  const note = findSpeakerNoteRange(lines, slides[slideIndex]);
+  if (!note) return '';
+  return lines.slice(note.openLine + 1, note.closeLine).join('\n');
+}
+
+function setNoteContent(md, slideIndex, newContent) {
+  const slides = findTopLevelSlides(md);
+  if (slideIndex < 0 || slideIndex >= slides.length) return md;
+  const slide = slides[slideIndex];
+  const lines = md.split('\n');
+  const existing = findSpeakerNoteRange(lines, slide);
+  const body = newContent.replace(/\s+$/, '');
+  if (existing) {
+    if (body === '') {
+      let removeFrom = existing.openLine;
+      const removeTo = existing.closeLine;
+      if (removeFrom > slide.openLine + 1 && lines[removeFrom - 1] === '') removeFrom -= 1;
+      lines.splice(removeFrom, removeTo - removeFrom + 1);
+      return lines.join('\n');
+    }
+    const replacement = [':::speaker-note', ...body.split('\n'), ':::'];
+    lines.splice(existing.openLine, existing.closeLine - existing.openLine + 1, ...replacement);
+    return lines.join('\n');
+  }
+  if (body === '') return md;
+  const insertAt = slide.closeLine;
+  const insert = [];
+  const prev = lines[insertAt - 1];
+  if (prev !== undefined && prev.trim() !== '') insert.push('');
+  insert.push(':::speaker-note', ...body.split('\n'), ':::');
+  lines.splice(insertAt, 0, ...insert);
+  return lines.join('\n');
+}
+
+function refreshNotesBox() {
+  const slides = findTopLevelSlides(editor.value);
+  if (slides.length === 0) {
+    notesInput.disabled = true;
+    notesInput.value = '';
+    notesSlideEl.textContent = '슬라이드 —';
+    return;
+  }
+  const idx = Math.min(Math.max(0, currentSlideIndex), slides.length - 1);
+  currentSlideIndex = idx;
+  notesInput.disabled = false;
+  notesSlideEl.textContent = `슬라이드 ${idx + 1}`;
+  if (document.activeElement === notesInput) return;
+  const content = getNoteContent(editor.value, idx) ?? '';
+  if (notesInput.value !== content) notesInput.value = content;
+}
+
+function flushPendingNote() {
+  if (notesFlushTimer) { clearTimeout(notesFlushTimer); notesFlushTimer = null; }
+  if (pendingNoteSlide < 0) return;
+  const newMd = setNoteContent(editor.value, pendingNoteSlide, pendingNoteContent);
+  pendingNoteSlide = -1;
+  pendingNoteContent = '';
+  if (newMd === editor.value) return;
+  notesWriteInProgress = true;
+  editor.value = newMd;
+  updateHighlight();
+  localStorage.setItem(SAVED_KEY, editor.value);
+  notesWriteInProgress = false;
+  scheduleConvert();
+}
+
+notesInput.addEventListener('input', () => {
+  pendingNoteSlide = currentSlideIndex;
+  pendingNoteContent = notesInput.value;
+  clearTimeout(notesFlushTimer);
+  notesFlushTimer = setTimeout(flushPendingNote, 250);
+});
+notesInput.addEventListener('blur', flushPendingNote);
+
+editor.addEventListener('input', () => {
+  if (notesWriteInProgress) return;
+  refreshNotesBox();
+});
+
+window.addEventListener('message', (e) => {
+  const d = e.data;
+  if (!d || typeof d !== 'object') return;
+
+  // A peer (presenter popup, or any future client) explicitly asked to navigate.
+  if (d.type === 'goTo' && typeof d.index === 'number') {
+    fanOutNav(e.source, d.index);
+    return;
+  }
+
+  if (typeof d.slideIndexChanged !== 'number') return;
+  if (d.reason === 'init') return;  // each window boots at 0; restored separately
+  if (d.reason === 'sync') return;  // our own broker echo — never re-broadcast
+
+  // Identify the source.
+  const fromIframe = e.source === preview.contentWindow;
+  const fromPpt = pptViewWin && e.source === pptViewWin;
+  if (!fromIframe && !fromPpt) return;
+
+  fanOutNav(e.source, d.slideIndexChanged);
+
+  // Editor's notes box only follows the iframe's current slide.
+  if (fromIframe && d.slideIndexChanged !== currentSlideIndex) {
+    flushPendingNote();
+    currentSlideIndex = d.slideIndexChanged;
+    const slides = findTopLevelSlides(editor.value);
+    if (slides.length > 0) {
+      const idx = Math.min(Math.max(0, currentSlideIndex), slides.length - 1);
+      notesInput.disabled = false;
+      notesSlideEl.textContent = `슬라이드 ${idx + 1}`;
+      if (document.activeElement !== notesInput) {
+        notesInput.value = getNoteContent(editor.value, idx) ?? '';
+      }
+    }
+  }
+});
+
+preview.addEventListener('load', () => {
+  try {
+    preview.contentWindow.postMessage({ type: 'goTo', index: currentSlideIndex }, '*');
+  } catch (err) {}
+});
+
 // ─ Image upload (base64 in browser) ─────────────
 
 function handleFiles(files) {
@@ -433,6 +672,7 @@ if (saved) {
 } else {
   updateHighlight();
 }
+refreshNotesBox();
 
 // Auto-save to localStorage
 editor.addEventListener('input', () => {

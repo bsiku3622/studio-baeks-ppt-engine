@@ -43,6 +43,8 @@
       <input type="file" id="file-input" multiple accept="image/*" hidden />
       <button id="upload-btn" class="btn">이미지 관리</button>
       <button id="sample-btn" class="btn">Sample</button>
+      <button id="ppt-view-btn" class="btn" title="PPT 뷰 — 새 창에 deck를 띄워 발표용으로 사용" disabled>📊 PPT 뷰</button>
+      <button id="presenter-btn" class="btn" title="발표자 뷰 — 새 창에 노트/타이머/다음 슬라이드 표시" disabled>📝 발표자 뷰</button>
       <button id="download-html-btn" class="btn primary" disabled>HTML ↓</button>
     </div>
   </div>
@@ -72,7 +74,14 @@
       </div>
     </div>
     <div class="pane preview-pane">
-      <iframe id="preview" title="Preview"></iframe>
+      <iframe id="preview" title="Preview" allowfullscreen></iframe>
+      <div id="notes-pane">
+        <div class="notes-header">
+          <span class="notes-label">발표자 노트 <span class="notes-slide-tag" id="notes-slide">슬라이드 —</span></span>
+          <span class="notes-hint">현재 슬라이드의 <code>:::speaker-note</code> 블록과 양방향 동기화 (markdown 가능)</span>
+        </div>
+        <textarea id="notes-input" placeholder="이 슬라이드에서 강조할 포인트, 예상 질문, 시간 배분 등을 적으세요. 비우면 MD에서 해당 블록이 제거됩니다." spellcheck="false"></textarea>
+      </div>
       <div id="drop-overlay" class="drop-overlay">이미지를 놓으세요</div>
     </div>
   </main>

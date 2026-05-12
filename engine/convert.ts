@@ -71,6 +71,7 @@ export function convertMd(md: string, opts: ConvertOptions = {}): ConvertResult 
 
   let fm: Frontmatter = {};
   const slides: string[] = [];
+  const notes: string[] = [];
 
   for (const node of tree.children) {
     if (node.type === 'yaml') {
@@ -106,8 +107,13 @@ export function convertMd(md: string, opts: ConvertOptions = {}): ConvertResult 
       continue;
     }
     if (node.type === 'containerDirective') {
-      const slide = renderSlide(node as ContainerDirective, fm);
-      if (slide) slides.push(slide);
+      const dir = node as ContainerDirective;
+      const noteHtml = extractSpeakerNote(dir);
+      const slide = renderSlide(dir, fm);
+      if (slide) {
+        slides.push(slide);
+        notes.push(noteHtml);
+      }
     }
   }
 
@@ -134,12 +140,18 @@ export function convertMd(md: string, opts: ConvertOptions = {}): ConvertResult 
     ? `<script>${opts.deckStageScript.replace(/<\//g, '<\\/')}\n</script>`
     : `<script src="${opts.deckStageSrc ?? 'deck-stage.js'}"></script>`;
 
+  const notesJson = JSON.stringify(notes).replace(/<\//g, '<\\/');
+  const notesTag = notes.some((n) => n.length > 0)
+    ? `<script type="application/json" id="speaker-notes">${notesJson}</script>`
+    : '';
+
   // Use function replacers to avoid `$&` etc. being interpreted in the JS source.
   const html = template
     .replace(/\{\{TITLE\}\}/g, escAttr(fm.title ?? '슬라이드 데크'))
     .replace(/\{\{PRIMARY_S500\}\}/g, s500)
     .replace(/\{\{PRIMARY_S600\}\}/g, s600)
     .replace('{{SLIDES}}', () => slides.join('\n\n  '))
+    .replace('{{SPEAKER_NOTES}}', () => notesTag)
     .replace('{{DECK_STAGE_SCRIPT_TAG}}', () => scriptTag);
 
   return { html, slideCount: slides.length, frontmatter: fm };
@@ -286,6 +298,21 @@ function findLeaves(children: any[], name: string): LeafDirective[] {
   return children.filter(
     (c) => c.type === 'leafDirective' && (c as LeafDirective).name === name
   ) as LeafDirective[];
+}
+
+function extractSpeakerNote(d: ContainerDirective): string {
+  const collected: ContainerDirective[] = [];
+  d.children = (d.children ?? []).filter((c: any) => {
+    if (c.type === 'containerDirective' && (c as ContainerDirective).name === 'speaker-note') {
+      collected.push(c as ContainerDirective);
+      return false;
+    }
+    return true;
+  }) as any;
+  if (collected.length === 0) return '';
+  return collected
+    .map((nc) => (nc.children ?? []).map((c: any) => renderBlock(c as BlockContent)).join('\n'))
+    .join('\n');
 }
 
 function dataLabel(label: string | undefined): string {

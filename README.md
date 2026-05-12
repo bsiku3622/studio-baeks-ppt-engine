@@ -50,6 +50,8 @@ npx vercel dev   # http://localhost:3000
 | `:::disclaimer` | 회색 불릿 + 하단 면책 |
 | `:::thanks` | 마지막 인사 |
 
+발표자 노트는 슬라이드 안에 `:::speaker-note ... :::`를 넣으면 됨 — 화면엔 안 보이고 전체화면 발표 시 별도 윈도우에 표시 (KeyNote 스타일: 현재/다음 슬라이드 프리뷰 + 노트 + 타이머). 에디터 사이트에서는 프리뷰 하단 박스로 양방향 편집.
+
 자세한 사용법은 [`docs/how-to-use.md`](./docs/how-to-use.md). 빌드된 카탈로그는 [`docs/templates.html`](./docs/templates.html) (테마 피커 포함) 또는 [`docs/templates.md`](./docs/templates.md)를 빌드한 결과 참고.
 
 ## 8색 팔레트

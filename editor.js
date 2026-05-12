@@ -673,15 +673,52 @@ sampleBtn.addEventListener('click', async () => {
 
 // ─ HTML download (original paths, no base64) ────
 
-downloadHtmlBtn.addEventListener('click', () => {
+async function inlineUrlAssets() {
+  // Convert any URL-based asset (e.g. sample assets from /example/assets/)
+  // into base64 dataURLs so the downloaded HTML is fully self-contained.
+  // User-uploaded images are already dataURLs (from FileReader.readAsDataURL).
+  const tasks = [];
+  for (const [name, val] of assetMap) {
+    if (typeof val !== 'string' || val.startsWith('data:')) continue;
+    tasks.push((async () => {
+      try {
+        const res = await fetch(val);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
+        assetMap.set(name, dataUrl);
+      } catch (e) {
+        console.warn(`[download] asset "${name}" 임베드 실패:`, e);
+      }
+    })());
+  }
+  await Promise.all(tasks);
+}
+
+downloadHtmlBtn.addEventListener('click', async () => {
   if (!lastHtml) return;
-  const blob = new Blob([lastHtml], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${sanitizeFilename(lastTitle)}.html`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const origText = downloadHtmlBtn.textContent;
+  downloadHtmlBtn.disabled = true;
+  downloadHtmlBtn.textContent = '이미지 임베드 중…';
+  try {
+    await inlineUrlAssets();
+    const html = injectAssets(lastHtml);
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${sanitizeFilename(lastTitle)}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } finally {
+    downloadHtmlBtn.disabled = false;
+    downloadHtmlBtn.textContent = origText;
+  }
 });
 
 function sanitizeFilename(s) {

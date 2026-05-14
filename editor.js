@@ -17,6 +17,7 @@ const primaryStatusEl = document.getElementById('primary-status');
 const assetCountEl = document.getElementById('asset-count');
 const errorEl = document.getElementById('error-msg');
 const downloadHtmlBtn = document.getElementById('download-html-btn');
+const downloadPptxBtn = document.getElementById('download-pptx-btn');
 const fileInput = document.getElementById('file-input');
 const uploadBtn = document.getElementById('upload-btn');
 const sampleBtn = document.getElementById('sample-btn');
@@ -112,6 +113,7 @@ async function convert() {
     slideCountEl.textContent = '— 슬라이드';
     convertTimeEl.textContent = '변환 대기';
     downloadHtmlBtn.disabled = true;
+    downloadPptxBtn.disabled = true;
     errorEl.textContent = '';
     return;
   }
@@ -152,6 +154,7 @@ async function convert() {
     refreshNotesBox();
     errorEl.textContent = '';
     downloadHtmlBtn.disabled = false;
+    downloadPptxBtn.disabled = false;
     primaryStatusEl.textContent = `primary: ${fmPrimary}`;
   } catch (e) {
     showError(`네트워크 오류: ${e.message}`);
@@ -194,6 +197,7 @@ function injectAssets(html) {
 editor.addEventListener('input', () => {
   updateHighlight();
   scheduleConvert();
+  updateUploadBtnState();
 });
 editor.addEventListener('scroll', () => {
   highlightEl.style.transform = `translate(${-editor.scrollLeft}px, ${-editor.scrollTop}px)`;
@@ -533,6 +537,7 @@ function flushPendingNote() {
   localStorage.setItem(SAVED_KEY, editor.value);
   notesWriteInProgress = false;
   scheduleConvert();
+  updateUploadBtnState();
 }
 
 notesInput.addEventListener('input', () => {
@@ -602,9 +607,21 @@ function handleFiles(files) {
       assetCountEl.textContent = `assets: ${assetMap.size}`;
       if (lastHtml) preview.srcdoc = injectAssets(lastHtml);
       if (!modal.hidden) renderModal();
+      updateUploadBtnState();
     };
     reader.readAsDataURL(file);
   }
+}
+
+// Highlight 이미지 관리 button in terracotta when the MD references images
+// the user hasn't uploaded yet — a hint to open the modal and fill them in.
+function updateUploadBtnState() {
+  const refs = scanMdReferences(editor.value);
+  let missing = 0;
+  for (const name of refs.keys()) {
+    if (!assetMap.has(name)) missing++;
+  }
+  uploadBtn.classList.toggle('has-missing', missing > 0);
 }
 
 // "이미지 관리" button → open modal (replaces direct file picker)
@@ -666,6 +683,7 @@ sampleBtn.addEventListener('click', async () => {
     assetCountEl.textContent = `assets: ${assetMap.size}`;
 
     convert();
+    updateUploadBtnState();
   } catch (e) {
     showError(`Sample 로드 실패: ${e.message}`);
   }
@@ -737,6 +755,7 @@ if (saved) {
   updateHighlight();
 }
 refreshNotesBox();
+updateUploadBtnState();
 
 // Auto-save to localStorage
 editor.addEventListener('input', () => {
@@ -890,6 +909,7 @@ modalGrid.addEventListener('click', (e) => {
     assetCountEl.textContent = `assets: ${assetMap.size}`;
     if (lastHtml) preview.srcdoc = injectAssets(lastHtml);
     renderModal();
+    updateUploadBtnState();
   } else if (action === 'upload-for') {
     // Trigger file picker; user picks any file, we rename to the missing name.
     const tempInput = document.createElement('input');
@@ -904,6 +924,7 @@ modalGrid.addEventListener('click', (e) => {
         assetCountEl.textContent = `assets: ${assetMap.size}`;
         if (lastHtml) preview.srcdoc = injectAssets(lastHtml);
         renderModal();
+        updateUploadBtnState();
       };
       reader.readAsDataURL(file);
     };
@@ -927,6 +948,7 @@ function insertAtCursor(text) {
   updateHighlight();
   localStorage.setItem(SAVED_KEY, editor.value);
   convert();
+  updateUploadBtnState();
 }
 
 // ─ AI Prompt copy (Skills.md body without frontmatter) ────
@@ -960,3 +982,423 @@ copyPromptBtn?.addEventListener('click', async () => {
     setTimeout(() => { copyPromptBtn.textContent = original; }, 2000);
   }
 });
+
+// ─ PPTX export ────────────────────────────────────
+// Image-per-slide PPTX: render lastHtml in a hidden offscreen iframe with
+// `noscale` + a forced-visible CSS override so every <section> sits at its
+// authored 1920×1080 in document flow. modern-screenshot captures each
+// section to PNG; pptxgenjs assembles them as a 16:9 deck with speaker
+// notes injected into the PPTX notes pane.
+
+// html2canvas-pro is the actively maintained fork that supports modern CSS color
+// functions (oklch/oklab/lch/lab) — the original html2canvas@1.4.1 throws on
+// "oklch", which the engine's primary palette relies on.
+const HTML2CANVAS_CDN = 'https://cdn.jsdelivr.net/npm/html2canvas-pro@2.0.2/dist/html2canvas-pro.min.js';
+
+const pptxModal = document.getElementById('pptx-modal');
+const pptxStartBtn = document.getElementById('pptx-start-btn');
+const pptxCancelBtn = document.getElementById('pptx-cancel-btn');
+const pptxCloseBtn = pptxModal.querySelector('.modal-close');
+const pptxBackdrop = pptxModal.querySelector('.modal-backdrop');
+const pptxProgress = document.getElementById('pptx-progress');
+const pptxProgressText = document.getElementById('pptx-progress-text');
+const pptxProgressFill = document.getElementById('pptx-progress-fill');
+const pptxErrorBox = document.getElementById('pptx-error');
+
+let pptxExportRunning = false;
+let pptxCancelled = false;
+
+function openPptxModal() {
+  pptxErrorBox.hidden = true;
+  pptxErrorBox.textContent = '';
+  pptxProgress.hidden = true;
+  pptxProgressFill.style.width = '0%';
+  pptxProgressText.textContent = '준비 중…';
+  pptxStartBtn.disabled = false;
+  pptxStartBtn.textContent = '내보내기 시작';
+  pptxCancelBtn.textContent = '취소';
+  pptxModal.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function closePptxModal() {
+  if (pptxExportRunning) return;  // can't close mid-export
+  pptxModal.hidden = true;
+  document.body.style.overflow = '';
+}
+
+function setPptxProgress(label, ratio) {
+  pptxProgress.hidden = false;
+  pptxProgressText.textContent = label;
+  pptxProgressFill.style.width = `${Math.round(ratio * 100)}%`;
+}
+
+function showPptxError(msg) {
+  pptxErrorBox.hidden = false;
+  pptxErrorBox.textContent = msg;
+}
+
+downloadPptxBtn.addEventListener('click', () => {
+  if (!lastHtml) return;
+  openPptxModal();
+});
+
+pptxCloseBtn.addEventListener('click', closePptxModal);
+pptxBackdrop.addEventListener('click', closePptxModal);
+pptxCancelBtn.addEventListener('click', () => {
+  if (pptxExportRunning) {
+    pptxCancelled = true;
+    pptxCancelBtn.textContent = '취소 중…';
+  } else {
+    closePptxModal();
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !pptxModal.hidden) closePptxModal();
+});
+
+pptxStartBtn.addEventListener('click', async () => {
+  if (pptxExportRunning) return;
+  const scaleInput = pptxModal.querySelector('input[name="pptx-scale"]:checked');
+  const scale = scaleInput ? parseInt(scaleInput.value, 10) : 1;
+  pptxExportRunning = true;
+  pptxCancelled = false;
+  pptxStartBtn.disabled = true;
+  pptxStartBtn.textContent = '내보내는 중…';
+  pptxErrorBox.hidden = true;
+  try {
+    await runPptxExport(scale);
+    setPptxProgress('완료', 1);
+    pptxExportRunning = false;
+    setTimeout(() => closePptxModal(), 600);
+  } catch (e) {
+    pptxExportRunning = false;
+    if (pptxCancelled) {
+      setPptxProgress('취소됨', 0);
+      pptxStartBtn.disabled = false;
+      pptxStartBtn.textContent = '내보내기 시작';
+      pptxCancelBtn.textContent = '취소';
+    } else {
+      console.error('[pptx] export failed', e);
+      showPptxError(`내보내기 실패: ${e.message || e}`);
+      pptxStartBtn.disabled = false;
+      pptxStartBtn.textContent = '다시 시도';
+      pptxCancelBtn.textContent = '취소';
+    }
+  }
+});
+
+// Strip HTML tags + decode common entities for the PPTX notes pane (plain text).
+function htmlNoteToText(html) {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  // Convert <br>/<p>/<li> to line breaks for readable plain text.
+  doc.querySelectorAll('br').forEach((n) => n.replaceWith('\n'));
+  doc.querySelectorAll('p, li, div').forEach((n) => n.append('\n'));
+  return (doc.body.textContent || '')
+    .replace(/ /g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function checkCancelled() {
+  if (pptxCancelled) throw new Error('사용자 취소');
+}
+
+// Build a self-contained HTML doc to render offscreen for capture.
+// - All asset URLs inlined to dataURLs (existing inlineUrlAssets pipeline)
+// - `noscale` attribute on <deck-stage> (deck-stage uses this branch for PPTX exporter)
+// - CSS override to force every section visible & in document flow at design size
+// - modern-screenshot loaded; helper script exposes window.__sbPptxApi
+function buildOffscreenHtml(html) {
+  const css = `
+    <style id="sb-pptx-override">
+      html, body { background: #000 !important; margin: 0; padding: 0; }
+      /* Force all slides visible at authored size, stacked in document flow.
+         Mirrors the @media print rules so each section is a discrete canvas. */
+      deck-stage {
+        display: block !important;
+        position: static !important;
+        inset: auto !important;
+        background: #000 !important;
+        overflow: visible !important;
+      }
+      deck-stage > section {
+        position: relative !important;
+        inset: auto !important;
+        width: 1920px !important;
+        height: 1080px !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        display: block !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+      }
+      /* Suppress every animation/transition so a captured frame is the final
+         resting state (no half-faded text, no in-flight transforms). */
+      *, *::before, *::after {
+        animation-duration: 0s !important;
+        animation-delay: 0s !important;
+        transition-duration: 0s !important;
+        transition-delay: 0s !important;
+      }
+
+      /* Watermark mirror — flattenSections() replaces <deck-stage> with
+         <div id="sb-pptx-wrap">, which breaks the template's
+         \`deck-stage > section:last-of-type::after\` selector. Re-state the
+         same rules against the post-flatten parent so the watermark survives
+         on the final slide. Keep these in sync with engine/template.html. */
+      #sb-pptx-wrap > section:last-of-type::after {
+        content: 'POWERED BY STUDIO BAEKS PPT ENGINE';
+        position: absolute;
+        bottom: 116px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-family: 'JetBrains Mono', ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 16px;
+        font-weight: 400;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.32);
+        pointer-events: none;
+        user-select: none;
+        white-space: nowrap;
+        z-index: 5;
+      }
+      #sb-pptx-wrap > section:last-of-type:not(.cover-dark):not([data-deck-darkbg])::after {
+        color: rgba(26, 26, 26, 0.3);
+      }
+    </style>
+  `;
+  const helper = `
+    <script>
+      (function () {
+        const READY_KEY = '__sbPptxReady';
+        const API_KEY = '__sbPptxApi';
+        window[READY_KEY] = false;
+
+        function waitForImages() {
+          const imgs = Array.from(document.images);
+          return Promise.all(imgs.map((img) => {
+            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+            if (img.complete) return Promise.resolve();  // broken; resolve anyway
+            return new Promise((resolve) => {
+              const done = () => resolve();
+              img.addEventListener('load', done, { once: true });
+              img.addEventListener('error', done, { once: true });
+            });
+          }));
+        }
+
+        function loadScript(src) {
+          return new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = () => resolve();
+            s.onerror = () => reject(new Error('load failed: ' + src));
+            document.head.appendChild(s);
+          });
+        }
+
+        // Move every <section> out of <deck-stage> and into <body> as a direct
+        // child. deck-stage's shadow DOM + ::slotted absolute-positioning was
+        // confusing html2canvas's layout pass (flex space-between collapsed).
+        // Sections kept their classes/styles; the engine's template CSS targets
+        // \`section { ... }\` so styling still applies normally.
+        function flattenSections() {
+          const stage = document.querySelector('deck-stage');
+          if (!stage) return [];
+          const sections = Array.from(stage.querySelectorAll(':scope > section'));
+          const wrap = document.createElement('div');
+          wrap.id = 'sb-pptx-wrap';
+          wrap.style.cssText = 'background:#000;';
+          for (const s of sections) {
+            // NOTE: don't touch \`display\`/\`flex-direction\` here — the engine
+            // template's \`section { display:flex; flex-direction:column }\`
+            // must keep applying so \`.cover { justify-content:space-between }\`
+            // distributes top/center/bottom correctly.
+            s.style.position = 'relative';
+            s.style.inset = 'auto';
+            s.style.width = '1920px';
+            s.style.height = '1080px';
+            s.style.opacity = '1';
+            s.style.visibility = 'visible';
+            s.style.margin = '0 0 16px 0';
+            wrap.appendChild(s);
+          }
+          stage.replaceWith(wrap);
+          return sections;
+        }
+
+        async function init() {
+          await loadScript(${JSON.stringify(HTML2CANVAS_CDN)});
+          if (document.readyState !== 'complete') {
+            await new Promise((r) => window.addEventListener('load', r, { once: true }));
+          }
+          if (document.fonts && document.fonts.ready) {
+            try { await document.fonts.ready; } catch (e) {}
+          }
+          await waitForImages();
+          // One extra rAF pair so any post-load layout settles before capture.
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+          const sectionRefs = flattenSections();
+          // Another rAF after DOM reshuffle so flex layout settles.
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+          window[API_KEY] = {
+            sections: () => sectionRefs,
+            capture: async (index, scale) => {
+              const target = sectionRefs[index];
+              if (!target) throw new Error('no section at index ' + index);
+              const canvas = await window.html2canvas(target, {
+                width: 1920,
+                height: 1080,
+                windowWidth: 1920,
+                windowHeight: 1080,
+                scale,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: null,
+                logging: false,
+              });
+              return canvas.toDataURL('image/png');
+            },
+            notes: () => {
+              const tag = document.getElementById('speaker-notes');
+              if (!tag) return [];
+              try { return JSON.parse(tag.textContent || '[]'); } catch (e) { return []; }
+            },
+          };
+          window[READY_KEY] = true;
+        }
+
+        init().catch((err) => {
+          window[API_KEY] = { error: err && err.message || String(err) };
+          window[READY_KEY] = true;
+        });
+      })();
+    </script>
+  `;
+  // Inject override + helper just before </head>. Also add `noscale` attribute
+  // to the deck-stage tag. The deck-stage script reads this on connectedCallback.
+  let modified = html.replace('</head>', `${css}\n${helper}\n</head>`);
+  modified = modified.replace(/<deck-stage\b([^>]*)>/, (_m, attrs) => {
+    if (/\bnoscale\b/.test(attrs)) return `<deck-stage${attrs}>`;
+    return `<deck-stage${attrs} noscale>`;
+  });
+  return modified;
+}
+
+async function runPptxExport(scale) {
+  if (typeof PptxGenJS !== 'function' && typeof window.PptxGenJS !== 'function') {
+    throw new Error('pptxgenjs 로드 실패 (네트워크 확인)');
+  }
+
+  setPptxProgress('이미지 자산 임베드 중…', 0.02);
+  await inlineUrlAssets();
+  checkCancelled();
+
+  const baseHtml = injectAssets(lastHtml);
+  const offscreenHtml = buildOffscreenHtml(baseHtml);
+
+  setPptxProgress('오프스크린 렌더 준비 중…', 0.06);
+
+  // Hidden iframe — visible but off-screen so layout actually runs at full size.
+  // (display:none would skip layout & image decode in some engines.)
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = [
+    'position:fixed',
+    'left:-100000px',
+    'top:0',
+    'width:1920px',
+    'height:1080px',
+    'border:0',
+    'pointer-events:none',
+    'opacity:0',
+  ].join(';');
+  const blob = new Blob([offscreenHtml], { type: 'text/html;charset=utf-8' });
+  const blobUrl = URL.createObjectURL(blob);
+  iframe.src = blobUrl;
+  document.body.appendChild(iframe);
+
+  const cleanup = () => {
+    try { document.body.removeChild(iframe); } catch (e) {}
+    URL.revokeObjectURL(blobUrl);
+  };
+
+  try {
+    // Wait for iframe load.
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('iframe 로드 타임아웃 (30s)')), 30000);
+      iframe.addEventListener('load', () => { clearTimeout(timer); resolve(); }, { once: true });
+      iframe.addEventListener('error', () => { clearTimeout(timer); reject(new Error('iframe 로드 오류')); }, { once: true });
+    });
+    checkCancelled();
+
+    // Poll for helper readiness (fonts/images/modern-screenshot all loaded).
+    const winRef = iframe.contentWindow;
+    const startedAt = Date.now();
+    while (!winRef.__sbPptxReady) {
+      if (Date.now() - startedAt > 30000) throw new Error('렌더 준비 타임아웃 (30s)');
+      checkCancelled();
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const api = winRef.__sbPptxApi;
+    if (!api || api.error) throw new Error(api?.error || 'capture API 준비 실패');
+
+    setPptxProgress('슬라이드 분석 중…', 0.1);
+    const sections = api.sections();
+    const notes = api.notes();
+    if (sections.length === 0) throw new Error('캡처할 슬라이드가 없습니다');
+
+    // Capture each section to PNG.
+    const captures = [];
+    for (let i = 0; i < sections.length; i++) {
+      checkCancelled();
+      setPptxProgress(
+        `슬라이드 캡처 ${i + 1} / ${sections.length}`,
+        0.1 + 0.8 * (i / sections.length),
+      );
+      const png = await api.capture(i, scale);
+      captures.push(png);
+      if (i < 2) {
+        // Diagnostic: decode the dataURL into an Image to get its actual pixel size.
+        const probe = await new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+          img.onerror = () => resolve({ w: -1, h: -1 });
+          img.src = png;
+        });
+        const rect = sections[i].getBoundingClientRect();
+        console.log(`[pptx debug] slide ${i + 1} — section rect: ${rect.width}×${rect.height}, captured PNG: ${probe.w}×${probe.h}`);
+      }
+    }
+
+    setPptxProgress('PPTX 생성 중…', 0.92);
+    const PptxCtor = window.PptxGenJS || PptxGenJS;
+    const pptx = new PptxCtor();
+    pptx.layout = 'LAYOUT_WIDE';  // 13.333 × 7.5 inch, 16:9
+    pptx.title = lastTitle || 'deck';
+    const slideW = pptx.presLayout.width;
+    const slideH = pptx.presLayout.height;
+
+    for (let i = 0; i < captures.length; i++) {
+      const slide = pptx.addSlide();
+      slide.background = { color: '000000' };
+      slide.addImage({
+        data: captures[i],
+        x: 0, y: 0, w: slideW, h: slideH,
+      });
+      const noteText = htmlNoteToText(notes[i] || '');
+      if (noteText) slide.addNotes(noteText);
+    }
+
+    setPptxProgress('파일 다운로드…', 0.98);
+    await pptx.writeFile({ fileName: `${sanitizeFilename(lastTitle)}.pptx` });
+  } finally {
+    cleanup();
+  }
+}

@@ -2,7 +2,8 @@ node_modules/
 .vercel
 .DS_Store
 *.log
-
+.claude/*
+.claude/
 # Generated artifacts (rebuild on demand)
 example/*.built.html
 example/발표.built.html

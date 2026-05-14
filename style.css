@@ -118,6 +118,20 @@ header nav .link-btn.copied { color: oklch(0.56 0.110 130); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 .btn.primary:hover { background: #000; }
+.btn.has-missing {
+  background: var(--primary);
+  color: var(--bg);
+  border-color: var(--primary);
+  animation: sb-missing-shake 2s ease-in-out infinite;
+}
+.btn.has-missing:hover { background: #b53b25; border-color: #b53b25; }
+@keyframes sb-missing-shake {
+  0%, 80%, 100% { transform: translateY(0); }
+  84% { transform: translateY(-3px); }
+  88% { transform: translateY(2px); }
+  92% { transform: translateY(-2px); }
+  96% { transform: translateY(1px); }
+}
 
 /* ─ Main panes ─────────────────────────────────────── */
 main {
@@ -510,4 +524,108 @@ main {
   color: var(--fg-muted);
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
+}
+
+/* ─ PPTX export modal ─────────────────────────────── */
+.pptx-dialog { max-width: 520px; }
+.pptx-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+.pptx-section { margin-bottom: 20px; }
+.pptx-section:last-child { margin-bottom: 0; }
+.pptx-section-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--fg-muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  font-weight: 500;
+}
+.pptx-radios { display: flex; flex-direction: column; gap: 8px; }
+.pptx-radio {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 100ms, background 100ms;
+}
+.pptx-radio:hover { border-color: var(--fg-muted); }
+.pptx-radio input[type="radio"] {
+  grid-row: 1 / 3;
+  margin: 0;
+  accent-color: var(--primary);
+}
+.pptx-radio:has(input:checked) {
+  border-color: var(--fg);
+  background: var(--bg-panel);
+}
+.pptx-radio-title { font-size: 13px; font-weight: 500; }
+.pptx-radio-hint {
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+.pptx-notes {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.6;
+}
+.pptx-notes code {
+  background: var(--bg-panel);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+.pptx-progress {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: var(--bg-panel);
+  border-radius: 6px;
+  border: 1px solid var(--rule);
+}
+.pptx-progress[hidden] { display: none; }
+.pptx-progress-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--fg);
+  margin-bottom: 8px;
+}
+.pptx-progress-bar {
+  height: 6px;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.pptx-progress-fill {
+  height: 100%;
+  background: var(--primary);
+  width: 0%;
+  transition: width 200ms ease-out;
+}
+.pptx-error {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--error);
+  background: rgba(176, 40, 40, 0.06);
+  color: var(--error);
+  border-radius: 5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.pptx-error[hidden] { display: none; }
+.pptx-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--rule);
+  background: var(--bg-panel);
 }

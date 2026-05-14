@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="./style.css" />
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
 </head>
 <body class="editor-body">
   <header>
@@ -46,6 +47,53 @@
       <button id="ppt-view-btn" class="btn" title="PPT 뷰 — 새 창에 deck를 띄워 발표용으로 사용" disabled>📊 PPT 뷰</button>
       <button id="presenter-btn" class="btn" title="발표자 뷰 — 새 창에 노트/타이머/다음 슬라이드 표시" disabled>📝 발표자 뷰</button>
       <button id="download-html-btn" class="btn primary" disabled>HTML ↓</button>
+      <button id="download-pptx-btn" class="btn primary" disabled>PPTX ↓</button>
+    </div>
+  </div>
+
+  <div id="pptx-modal" class="modal" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog pptx-dialog" role="dialog" aria-labelledby="pptx-modal-title" aria-modal="true">
+      <div class="modal-header">
+        <h2 id="pptx-modal-title">PPTX 내보내기</h2>
+        <button class="modal-close" type="button" aria-label="닫기">×</button>
+      </div>
+      <div class="pptx-body">
+        <div class="pptx-section">
+          <div class="pptx-section-label">해상도</div>
+          <div class="pptx-radios">
+            <label class="pptx-radio">
+              <input type="radio" name="pptx-scale" value="1" checked />
+              <span class="pptx-radio-title">1× (1920 × 1080)</span>
+              <span class="pptx-radio-hint">표준. 빠르고 파일 가벼움</span>
+            </label>
+            <label class="pptx-radio">
+              <input type="radio" name="pptx-scale" value="2" />
+              <span class="pptx-radio-title">2× (3840 × 2160)</span>
+              <span class="pptx-radio-hint">고화질. 캡처 느리고 파일 큼 (~4배)</span>
+            </label>
+          </div>
+        </div>
+        <div class="pptx-section">
+          <div class="pptx-section-label">메모</div>
+          <ul class="pptx-notes">
+            <li>각 슬라이드를 이미지로 캡처하여 PPTX에 박는 방식 — 편집은 불가, 화면 그대로 보존.</li>
+            <li><code>:::speaker-note</code> 본문은 PPTX 발표자 노트 칸에 plain text로 삽입됩니다.</li>
+            <li>캡처 중에는 모달을 닫지 마세요.</li>
+          </ul>
+        </div>
+        <div id="pptx-progress" class="pptx-progress" hidden>
+          <div class="pptx-progress-text" id="pptx-progress-text">준비 중…</div>
+          <div class="pptx-progress-bar">
+            <div class="pptx-progress-fill" id="pptx-progress-fill"></div>
+          </div>
+        </div>
+        <div id="pptx-error" class="pptx-error" hidden></div>
+      </div>
+      <div class="pptx-footer">
+        <button id="pptx-cancel-btn" class="btn" type="button">취소</button>
+        <button id="pptx-start-btn" class="btn primary" type="button">내보내기 시작</button>
+      </div>
     </div>
   </div>
 

@@ -411,11 +411,11 @@ let pendingNoteSlide = -1;
 let pendingNoteContent = '';
 let notesWriteInProgress = false;
 
-// Names of all top-level slide directives. Anything else (e.g. speaker-note)
-// is treated as a nested sub-directive. Mirrors `renderSlide` in engine/convert.ts.
+// Names of all top-level slide directives. Anything else (e.g. speaker-note,
+// element containers like chart/plot/stats) is treated as a nested sub-directive.
+// Mirrors `renderSlide` in engine/convert.ts.
 const SLIDE_DIRECTIVES = new Set([
-  'cover', 'split', 'bullets', 'divider', 'stats', 'charts',
-  'disclaimer', 'thanks', 'image', 'stack', 'chart', 'plot',
+  'cover', 'split', 'single', 'bullets', 'divider', 'index',
 ]);
 
 // Lenient to match the engine's remark-directive parser: encountering a new

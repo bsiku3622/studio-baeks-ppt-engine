@@ -30,6 +30,13 @@ export class EngineError extends Error {
   }
 }
 
+export type Chrome = {
+  topLeft?: string;
+  topRight?: string;
+  bottomLeft?: string;
+  bottomRight?: string;
+};
+
 export type Frontmatter = {
   title?: string;
   subtitle?: string;
@@ -39,6 +46,8 @@ export type Frontmatter = {
   venue?: string;
   primary?: string;
   primaryDark?: string;
+  chrome?: Chrome;
+  [key: string]: string | Chrome | undefined;
 };
 
 export type ConvertOptions = {
@@ -73,6 +82,12 @@ export function convertMd(md: string, opts: ConvertOptions = {}): ConvertResult 
   const slides: string[] = [];
   const notes: string[] = [];
 
+  const totalSlides = tree.children.filter(
+    (c: any) => c.type === 'containerDirective' && c.name !== 'speaker-note'
+  ).length;
+  let slideIdx = 0;
+  let currentSection = '';
+
   for (const node of tree.children) {
     if (node.type === 'yaml') {
       const yamlStartLine = node.position?.start.line ?? 1;
@@ -85,15 +100,42 @@ export function convertMd(md: string, opts: ConvertOptions = {}): ConvertResult 
           line: yamlStartLine + yamlLine,
         });
       }
-      // Validate & coerce: each field should be string-ish.
-      // Object/array values (e.g., from typing `{{}}`) → clear error.
+      // Validate & coerce: most fields should be string-ish.
+      // `chrome` is allowed to be a flat object of slot→template strings.
+      // Other object/array values → clear error.
       const mdLines = md.split('\n');
+      const CHROME_SLOTS = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'];
       for (const k of Object.keys(raw)) {
         const v = raw[k];
         if (v == null) { delete raw[k]; continue; }
         if (typeof v === 'string') continue;
         if (typeof v === 'number' || typeof v === 'boolean') {
           raw[k] = String(v);
+          continue;
+        }
+        if (k === 'chrome' && typeof v === 'object' && !Array.isArray(v)) {
+          const chrome: any = {};
+          for (const slot of Object.keys(v)) {
+            if (!CHROME_SLOTS.includes(slot)) {
+              const idx = mdLines.findIndex((l) => new RegExp(`^\\s+${slot}\\s*:`).test(l));
+              throw new EngineError(
+                `chrome.${slot}: 알 수 없는 슬롯. ${CHROME_SLOTS.join(' / ')} 중 선택.`,
+                { line: idx >= 0 ? idx + 1 : undefined },
+              );
+            }
+            const sv = v[slot];
+            if (sv == null) continue;
+            if (typeof sv === 'string' || typeof sv === 'number' || typeof sv === 'boolean') {
+              chrome[slot] = String(sv);
+            } else {
+              const idx = mdLines.findIndex((l) => new RegExp(`^\\s+${slot}\\s*:`).test(l));
+              throw new EngineError(
+                `chrome.${slot}의 값은 문자열이어야 합니다.`,
+                { line: idx >= 0 ? idx + 1 : undefined },
+              );
+            }
+          }
+          raw[k] = chrome;
           continue;
         }
         // Object / array — invalid for our schema.
@@ -108,10 +150,40 @@ export function convertMd(md: string, opts: ConvertOptions = {}): ConvertResult 
     }
     if (node.type === 'containerDirective') {
       const dir = node as ContainerDirective;
+      // remark-directive doesn't reliably nest two same-fence containers
+      // (`:::single` + `:::stats` + `:::speaker-note`) — :::speaker-note can
+      // pop out to the top level. Attach it to the previously rendered slide.
+      if (dir.name === 'speaker-note') {
+        if (notes.length > 0) {
+          const extra = (dir.children ?? [])
+            .map((c: any) => renderNotesBlock(c as BlockContent))
+            .join('\n');
+          notes[notes.length - 1] = notes[notes.length - 1]
+            ? notes[notes.length - 1] + '\n' + extra
+            : extra;
+        }
+        continue;
+      }
       const noteHtml = extractSpeakerNote(dir);
+      slideIdx += 1;
+      if (dir.name === 'divider') {
+        currentSection = extractDirectiveTitleText(dir);
+      }
+      // Explicit section override via attribute. Useful for intro slides
+      // before the first :::divider, or to label a sub-section without a
+      // full divider slide. Propagates like divider until next override.
+      const sectionAttr = (dir.attributes ?? {}).section;
+      if (typeof sectionAttr === 'string' && sectionAttr.length > 0) {
+        currentSection = sectionAttr;
+      }
       const slide = renderSlide(dir, fm);
       if (slide) {
-        slides.push(slide);
+        const chromeHtml = buildChromeHtml(
+          dir.name,
+          (dir.attributes ?? {}).chrome,
+          { fm, n: slideIdx, total: totalSlides, section: currentSection },
+        );
+        slides.push(injectChrome(slide, chromeHtml));
         notes.push(noteHtml);
       }
     }
@@ -373,6 +445,72 @@ function dataLabel(label: string | undefined): string {
   return label ? ` data-label="${escAttr(label)}"` : '';
 }
 
+// ───────────────────────── chrome (corner metadata) ─────────────────────────
+
+type ChromeCtx = { fm: Frontmatter; n: number; total: number; section: string };
+
+function substituteChromeTokens(template: string, ctx: ChromeCtx): string {
+  return template.replace(/\{([^}]+)\}/g, (_, key) => {
+    if (key === 'n') return String(ctx.n);
+    if (key === 'total') return String(ctx.total);
+    if (key === 'section') return ctx.section;
+    const v = (ctx.fm as any)[key];
+    return typeof v === 'string' ? v : '';
+  });
+}
+
+const CHROME_HIDDEN_LAYOUTS = new Set(['cover', 'divider']);
+
+function buildChromeHtml(
+  layoutName: string,
+  perSlideAttr: unknown,
+  ctx: ChromeCtx,
+): string {
+  let show: boolean;
+  if (perSlideAttr === 'true' || perSlideAttr === true) show = true;
+  else if (perSlideAttr === 'false' || perSlideAttr === false) show = false;
+  else show = !CHROME_HIDDEN_LAYOUTS.has(layoutName);
+
+  if (!show) return '';
+
+  const chrome = ctx.fm.chrome ?? {};
+  const slots: Array<['tl' | 'tr' | 'bl' | 'br', string | undefined]> = [
+    ['tl', chrome.topLeft],
+    ['tr', chrome.topRight],
+    ['bl', chrome.bottomLeft],
+    ['br', chrome.bottomRight],
+  ];
+  const corners: string[] = [];
+  for (const [pos, tpl] of slots) {
+    if (!tpl) continue;
+    const text = substituteChromeTokens(tpl, ctx);
+    if (text.trim().length === 0) continue;
+    corners.push(`<div class="corner ${pos}">${escHtml(text)}</div>`);
+  }
+  if (corners.length === 0) return '';
+  return `<div class="slide-chrome" aria-hidden="true">${corners.join('')}</div>`;
+}
+
+function injectChrome(slideHtml: string, chromeHtml: string): string {
+  if (!chromeHtml) return slideHtml;
+  return slideHtml.replace(/^(<section[^>]*>)/, `$1\n    ${chromeHtml}`);
+}
+
+function extractDirectiveTitleText(d: ContainerDirective): string {
+  const heading = findFirstHeading(d.children);
+  const nodes = heading ? heading.children : findFirstParagraph(d.children)?.children;
+  if (!nodes) return '';
+  const walk = (arr: any[]): string =>
+    arr
+      .map((c: any) => {
+        if (c.type === 'text') return c.value as string;
+        if (Array.isArray(c.children)) return walk(c.children);
+        return '';
+      })
+      .join('');
+  return walk(nodes).trim();
+}
+
 /** Build `data-align` / `data-valign` attribute string from a directive's attrs. */
 function alignAttrs(attrs: Record<string, any>): string {
   const parts: string[] = [];
@@ -443,9 +581,205 @@ function renderGenericBlock(node: any): string {
       return renderImageBlock(node as Image);
     case 'math':
       return renderBlock(node);
+    case 'code': {
+      const lang = (node as any).lang ?? '';
+      const value = (node as any).value ?? '';
+      const cls = lang ? ` class="language-${escAttr(lang)}"` : '';
+      return `<pre class="code-block"><code${cls}>${escHtml(value)}</code></pre>`;
+    }
+    case 'leafDirective':
+      return renderLeafElement(node as LeafDirective);
+    case 'containerDirective':
+      return renderContainerElement(node as ContainerDirective);
     default:
       return '';
   }
+}
+
+function renderContainerElement(d: ContainerDirective): string {
+  if (d.name === 'stats') return renderStatsGroup(d);
+  if (d.name === 'chart') return renderChartEmbed(d);
+  if (d.name === 'plot')  return renderPlotEmbed(d);
+  return '';
+}
+
+function renderPlotEmbed(d: ContainerDirective): string {
+  const attrs = d.attributes ?? {};
+  const caption = String(attrs.caption ?? '');
+  let xMin: number, xMax: number;
+  try {
+    [xMin, xMax] = parseRange((attrs.x as string) ?? '[-5, 5]');
+  } catch (e: any) {
+    throw new EngineError(`plot x-range error: ${e.message}`, { line: d.position?.start.line });
+  }
+  let yMinOverride: number | undefined, yMaxOverride: number | undefined;
+  if (attrs.y) {
+    try {
+      [yMinOverride, yMaxOverride] = parseRange(attrs.y as string);
+    } catch (e: any) {
+      throw new EngineError(`plot y-range error: ${e.message}`, { line: d.position?.start.line });
+    }
+  }
+  const textNodes = (d.children ?? []).filter(
+    (c: any) => c.type !== 'heading' && c.type !== 'table',
+  );
+  const body = textNodes.map(mdastTextOf).join('\n');
+  const exprs = body
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .map((l) => l.replace(/^y\s*=\s*/i, '').trim());
+  const tableNode = (d.children ?? []).find((c: any) => c.type === 'table');
+  let scatter: ScatterSeries[] = [];
+  if (tableNode) {
+    try {
+      scatter = parseScatterTable(tableNode);
+    } catch (e: any) {
+      throw new EngineError(`plot scatter table error: ${e.message}`, { line: d.position?.start.line });
+    }
+  }
+  if (exprs.length === 0 && scatter.length === 0) {
+    throw new EngineError(
+      `:::plot needs at least one function expression OR a scatter table.`,
+      { line: d.position?.start.line },
+    );
+  }
+  let fns: Array<(x: number) => number>;
+  try {
+    fns = exprs.map(compileExpr);
+  } catch (e: any) {
+    throw new EngineError(`plot expression error: ${e.message}`, { line: d.position?.start.line });
+  }
+  if (!attrs.x && fns.length === 0 && scatter.length > 0) {
+    const xs = scatter.flatMap((s) => s.points.map((p) => p[0]));
+    if (xs.length > 0) {
+      const xmin = Math.min(...xs), xmax = Math.max(...xs);
+      const pad = (xmax - xmin) * 0.1 || 1;
+      xMin = xmin - pad;
+      xMax = xmax + pad;
+    }
+  }
+  const svg = renderPlotSvg(fns, exprs, scatter, xMin, xMax, yMinOverride, yMaxOverride);
+  const capHtml = caption
+    ? `<div class="chart-caption">${escHtml(caption)}</div>`
+    : '';
+  return `<div class="chart-embed">
+      <div class="plot-stage">${svg}</div>
+      ${capHtml}
+    </div>`;
+}
+
+function renderChartEmbed(d: ContainerDirective): string {
+  const attrs = d.attributes ?? {};
+  const type = String(attrs.type ?? 'bar').toLowerCase();
+  if (!['bar', 'line', 'pie'].includes(type)) {
+    throw new EngineError(
+      `:::chart type "${type}" not supported. Use bar | line | pie.`,
+      { line: d.position?.start.line },
+    );
+  }
+  const caption = String(attrs.caption ?? '');
+  const tableNode = (d.children ?? []).find((c: any) => c.type === 'table');
+  if (!tableNode) {
+    throw new EngineError(
+      `:::chart needs a markdown table inside (header row + data rows).`,
+      { line: d.position?.start.line },
+    );
+  }
+  let data: ChartData;
+  try {
+    data = parseChartTable(tableNode);
+  } catch (e: any) {
+    throw new EngineError(`chart data error: ${e.message}`, { line: d.position?.start.line });
+  }
+  const svg =
+    type === 'pie'  ? renderPieSvg(data) :
+    type === 'line' ? renderLineSvg(data) :
+                      renderBarSvg(data);
+  const capHtml = caption
+    ? `<div class="chart-caption">${escHtml(caption)}</div>`
+    : '';
+  return `<div class="chart-embed">
+      <div class="chart-stage">${svg}</div>
+      ${capHtml}
+    </div>`;
+}
+
+function renderStatsGroup(d: ContainerDirective): string {
+  const attrs = d.attributes ?? {};
+  const isColumn = attrs.column !== undefined;
+  const cls = isColumn ? 'stats-group' : 'stats-group row';
+  const inner = (d.children ?? [])
+    .map((c) => renderGenericBlock(c))
+    .filter((s) => s.trim().length > 0)
+    .join('\n      ');
+  return `<div class="${cls}">${inner}</div>`;
+}
+
+// ───────────────────────── block-level element directives ─────────────────────────
+
+function renderLeafElement(d: LeafDirective): string {
+  switch (d.name) {
+    case 'video':   return renderVideoElement(d);
+    case 'callout': return renderCalloutElement(d);
+    case 'note':    return renderNoteElement(d);
+    case 'stat':    return renderStatElement(d);
+    default:        return '';
+  }
+}
+
+function renderVideoElement(d: LeafDirective): string {
+  const attrs = d.attributes ?? {};
+  const src = String(attrs.src ?? '');
+  if (!src) {
+    throw new EngineError(`::video requires src attribute.`, { line: d.position?.start.line });
+  }
+  const caption = String(attrs.caption ?? '');
+  const autoplay = attrs.autoplay !== undefined;
+  const ytMatch = src.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([\w-]+)/);
+  let mediaHtml: string;
+  if (ytMatch) {
+    const id = ytMatch[1];
+    const params = autoplay ? 'rel=0&autoplay=1&mute=1' : 'rel=0';
+    mediaHtml = `<iframe src="https://www.youtube.com/embed/${id}?${params}" frameborder="0" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>`;
+  } else {
+    const ap = autoplay ? ' autoplay muted' : '';
+    mediaHtml = `<video src="${escAttr(src)}" controls${ap}></video>`;
+  }
+  const capHtml = caption
+    ? `<div class="video-caption">${escHtml(caption)}</div>`
+    : '';
+  return `<div class="video-block">${mediaHtml}${capHtml}</div>`;
+}
+
+function renderCalloutElement(d: LeafDirective): string {
+  const attrs = d.attributes ?? {};
+  const detail = String(attrs.detail ?? '');
+  const msg = renderInline(d.children as PhrasingContent[]);
+  const detailHtml = detail ? `<div class="callout-detail">${escHtml(detail)}</div>` : '';
+  return `<div class="callout-block">
+      <div class="callout-main">${msg}</div>
+      ${detailHtml}
+    </div>`;
+}
+
+function renderNoteElement(d: LeafDirective): string {
+  const text = renderInline(d.children as PhrasingContent[]);
+  return `<div class="note-block">* ${text}</div>`;
+}
+
+function renderStatElement(d: LeafDirective): string {
+  const attrs = d.attributes ?? {};
+  const lbl = String(attrs.label ?? '');
+  const isPrimary = attrs.primary !== undefined;
+  const isReverse = attrs.reverse !== undefined;
+  const value = renderInline(d.children as PhrasingContent[]);
+  const numCls = isPrimary ? 'stat-num primary' : 'stat-num';
+  const blockCls = isReverse ? 'stat-block reverse' : 'stat-block';
+  return `<div class="${blockCls}">
+      <div class="stat-lbl">${escHtml(lbl)}</div>
+      <div class="${numCls}">${value}</div>
+    </div>`;
 }
 
 // ───────────────────────── tables ─────────────────────────
@@ -930,129 +1264,24 @@ function renderSlide(d: ContainerDirective, fm: Frontmatter): string | null {
   switch (d.name) {
     case 'cover':      return renderCover(d, label, fm);
     case 'split':      return renderSplit(d, label);
-    case 'bullets':    return renderBulletsOnly(d, label);
+    case 'single':     return renderBulletsOnly(d, label);
+    case 'bullets':    return renderBulletsOnly(d, label); // alias (deprecated)
     case 'divider':    return renderDivider(d, label);
-    case 'stats':      return renderStats(d, label);
-    case 'charts':     return renderCharts(d, label);
-    case 'disclaimer': return renderDisclaimer(d, label);
-    case 'thanks':     return renderThanks(d, label, fm);
-    case 'image':      return renderImageSlide(d, label);
-    case 'stack':      return renderStack(d, label);
-    case 'chart':      return renderChartSlide(d, label);
-    case 'plot':       return renderPlotSlide(d, label);
+    case 'index':      return renderIndex(d, label);
     default:
       throw new EngineError(
-        `Unknown slide directive: ":::${d.name}". Valid: cover, split, bullets, divider, stats, charts, disclaimer, thanks, image, stack, chart, plot.`,
+        `Unknown slide layout: ":::${d.name}". Valid layouts: cover, split, single, divider, index.`,
         { line: d.position?.start.line },
       );
   }
 }
 
-function renderChartSlide(d: ContainerDirective, label: string | undefined): string {
-  const attrs = d.attributes ?? {};
-  const type = ((attrs.type as string) ?? 'bar').toLowerCase();
-  if (!['bar', 'line', 'pie'].includes(type)) {
-    throw new EngineError(
-      `:::chart type "${type}" not supported. Use bar | line | pie.`,
-      { line: d.position?.start.line },
-    );
-  }
-  const title = (attrs.title as string | undefined) ?? '';
-  const heading = findHeading(d.children);
-  const titleHtml = heading ? renderInline(heading.children) : (title ? escHtml(title) : '');
-  const tableNode = (d.children ?? []).find((c: any) => c.type === 'table');
-  if (!tableNode) {
-    throw new EngineError(
-      `:::chart needs a markdown table inside (header row + data rows).`,
-      { line: d.position?.start.line },
-    );
-  }
-  let data: ChartData;
-  try {
-    data = parseChartTable(tableNode);
-  } catch (e: any) {
-    throw new EngineError(`chart data error: ${e.message}`, { line: d.position?.start.line });
-  }
-  const svg =
-    type === 'pie'  ? renderPieSvg(data) :
-    type === 'line' ? renderLineSvg(data) :
-                      renderBarSvg(data);
-  return `<section${dataLabel(label)}${alignAttrs(attrs)}>
-    ${titleHtml ? `<h1 class="h1" style="margin: 0 0 var(--gap-title);">${titleHtml}</h1>` : ''}
-    <div class="chart-stage">${svg}</div>
-  </section>`;
-}
 
-function renderPlotSlide(d: ContainerDirective, label: string | undefined): string {
-  const attrs = d.attributes ?? {};
-  const title = (attrs.title as string | undefined) ?? '';
-  const heading = findHeading(d.children);
-  const titleHtml = heading ? renderInline(heading.children) : (title ? escHtml(title) : '');
-  // Parse x-range (default [-5, 5])
-  let xMin: number, xMax: number;
-  try {
-    [xMin, xMax] = parseRange((attrs.x as string) ?? '[-5, 5]');
-  } catch (e: any) {
-    throw new EngineError(`plot x-range error: ${e.message}`, { line: d.position?.start.line });
-  }
-  let yMinOverride: number | undefined, yMaxOverride: number | undefined;
-  if (attrs.y) {
-    try {
-      [yMinOverride, yMaxOverride] = parseRange(attrs.y as string);
-    } catch (e: any) {
-      throw new EngineError(`plot y-range error: ${e.message}`, { line: d.position?.start.line });
-    }
-  }
-  // Function expressions: text-content lines (excluding heading + table).
-  const textNodes = (d.children ?? []).filter(
-    (c: any) => c.type !== 'heading' && c.type !== 'table',
-  );
-  const body = textNodes.map(mdastTextOf).join('\n');
-  const exprs = body
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0)
-    .map((l) => l.replace(/^y\s*=\s*/i, '').trim());
-  // Scatter data: optional embedded markdown table (header `x | s1 | s2 ...`).
-  const tableNode = (d.children ?? []).find((c: any) => c.type === 'table');
-  let scatter: ScatterSeries[] = [];
-  if (tableNode) {
-    try {
-      scatter = parseScatterTable(tableNode);
-    } catch (e: any) {
-      throw new EngineError(`plot scatter table error: ${e.message}`, { line: d.position?.start.line });
-    }
-  }
-  if (exprs.length === 0 && scatter.length === 0) {
-    throw new EngineError(
-      `:::plot needs at least one function expression OR a scatter table.`,
-      { line: d.position?.start.line },
-    );
-  }
-  let fns: Array<(x: number) => number>;
-  try {
-    fns = exprs.map(compileExpr);
-  } catch (e: any) {
-    throw new EngineError(`plot expression error: ${e.message}`, { line: d.position?.start.line });
-  }
-  // If no x-range provided AND no functions, derive from scatter points.
-  if (!attrs.x && fns.length === 0 && scatter.length > 0) {
-    const xs = scatter.flatMap((s) => s.points.map((p) => p[0]));
-    if (xs.length > 0) {
-      const xmin = Math.min(...xs), xmax = Math.max(...xs);
-      const pad = (xmax - xmin) * 0.1 || 1;
-      xMin = xmin - pad;
-      xMax = xmax + pad;
-    }
-  }
-  const svg = renderPlotSvg(fns, exprs, scatter, xMin, xMax, yMinOverride, yMaxOverride);
-  return `<section${dataLabel(label)}${alignAttrs(attrs)}>
-    ${titleHtml ? `<h1 class="h1" style="margin: 0 0 var(--gap-title);">${titleHtml}</h1>` : ''}
-    <div class="plot-stage">${svg}</div>
-  </section>`;
-}
 
 function renderCover(d: ContainerDirective, label: string | undefined, fm: Frontmatter): string {
+  const variant = (d.attributes ?? {}).variant;
+  if (variant === 'close') return renderCoverClose(d, label, fm);
+
   // Heading depth controls title size. # = display (gigantic),
   // ## = medium, ### = standard, etc. — let users dial down for long titles.
   const heading = findFirstHeading(d.children);
@@ -1073,10 +1302,23 @@ function renderCover(d: ContainerDirective, label: string | undefined, fm: Front
     ? `\n      <div style="margin-top: 16px; font-size: 24px; color: rgba(245, 240, 235, 0.5); font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em;">${metaParts.join(' · ')}</div>`
     : '';
   return `<section${dataLabel(label ?? '01 표지')} class="cover cover-dark" style="justify-content: center;">
-    <div class="center" style="gap: 40px; margin-top: 96px;">
+    <div class="center" style="gap: 40px; margin-top: 96px; align-items: center;">
       <h${depth} class="display" style="font-size: ${titleSize}px; line-height: ${titleLine}; margin: 0; font-weight: 900; max-width: 1680px;">${title}</h${depth}>
       <div class="h2 muted" style="max-width: 1400px;">${subtitle}</div>
-      <div style="margin-top: 48px; font-size: 36px;"><span class="muted" style="font-family: 'JetBrains Mono', monospace;">${id}</span>&nbsp;&nbsp;${author}</div>${metaLine}
+      <div style="margin-top: 48px; font-size: 36px; font-weight: 700;"><span class="muted" style="font-family: 'JetBrains Mono', monospace; font-weight: 500;">${id}</span>&nbsp;&nbsp;${author}</div>${metaLine}
+    </div>
+  </section>`;
+}
+
+function renderCoverClose(d: ContainerDirective, label: string | undefined, fm: Frontmatter): string {
+  const heading = findFirstHeading(d.children);
+  const msg = heading ? renderInline(heading.children) : '감사합니다';
+  const author = escHtml(fm.author ?? '');
+  const id = escHtml(fm.id ?? '');
+  return `<section class="cover-dark"${dataLabel(label ?? '닫는 표지')}>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 32px; text-align: center; margin-top: 60px;">
+      <h1 class="display" style="font-size: 140px; font-weight: 900; line-height: 1; margin: 0;">${msg}</h1>
+      <div style="font-size: 32px; font-weight: 700; margin-top: 24px;">${author} <span class="muted" style="font-family: 'JetBrains Mono', monospace; font-size: 26px; font-weight: 500; margin-left: 10px;">${id}</span></div>
     </div>
   </section>`;
 }
@@ -1139,54 +1381,7 @@ function renderSplit(d: ContainerDirective, label: string | undefined): string {
   </section>`;
 }
 
-function renderImageSlide(d: ContainerDirective, label: string | undefined): string {
-  const attrs = d.attributes ?? {};
-  // image slide defaults to center/center if user didn't specify
-  const sectionAttrs = alignAttrs({ align: attrs.align ?? 'center', valign: attrs.valign ?? 'center' });
-  const groups = hasThematicBreak(d.children)
-    ? splitByThematicBreak(d.children)
-    : [d.children];
 
-  const blocksHtml = groups.map((group) => {
-    if (isMediaOnly(group)) {
-      const img = findFirstImage(group);
-      if (!img) return '';
-      const src = escAttr(img.url);
-      const alt = escAttr(img.alt ?? '');
-      return `<div class="image-main"><img src="${src}" alt="${alt}" style="max-width: 100%; max-height: 70vh; object-fit: contain; display: block; margin: 0 auto; filter: grayscale(0.1) contrast(1.02);" /></div>`;
-    }
-    const html = group.map(renderGenericBlock).join('\n      ');
-    return `<div class="image-caption" style="font-size: var(--type-caption); color: var(--fg-muted); text-align: center; max-width: 1400px; margin: 0 auto;">${html}</div>`;
-  }).join('\n    ');
-
-  return `<section${dataLabel(label)}${sectionAttrs}>
-    <div class="image-stage">
-      ${blocksHtml}
-    </div>
-  </section>`;
-}
-
-function renderStack(d: ContainerDirective, label: string | undefined): string {
-  const attrs = d.attributes ?? {};
-  const sectionAttrs = alignAttrs(attrs);
-  const gap = (attrs.gap as string | undefined) ?? 'medium';
-  const gapAttr = ['small', 'medium', 'large'].includes(gap) ? ` data-gap="${gap}"` : '';
-
-  const groups = hasThematicBreak(d.children)
-    ? splitByThematicBreak(d.children)
-    : [d.children];
-
-  const blocksHtml = groups.map((group) => {
-    const html = group.map(renderGenericBlock).join('\n      ');
-    return `<div class="stack-block">${html}</div>`;
-  }).join('\n    ');
-
-  return `<section${dataLabel(label)}${sectionAttrs}>
-    <div class="stack"${gapAttr}>
-      ${blocksHtml}
-    </div>
-  </section>`;
-}
 
 function renderBulletsOnly(d: ContainerDirective, label: string | undefined): string {
   const heading = findHeading(d.children);
@@ -1199,6 +1394,20 @@ function renderBulletsOnly(d: ContainerDirective, label: string | undefined): st
     .filter((s) => s.trim().length > 0)
     .join('\n    ');
   return `<section${dataLabel(label)}${alignAttrs(d.attributes ?? {})}>
+    <h1 class="h1" style="margin: 0 0 var(--gap-title);">${titleHtml}</h1>
+    ${bodyHtml}
+  </section>`;
+}
+
+function renderIndex(d: ContainerDirective, label: string | undefined): string {
+  const heading = findHeading(d.children);
+  const titleHtml = heading ? renderInline(heading.children) : '';
+  const bodyHtml = (d.children ?? [])
+    .filter((c: any) => !(c.type === 'heading' && (c as Heading).depth === 1))
+    .map((c) => renderGenericBlock(c))
+    .filter((s) => s.trim().length > 0)
+    .join('\n    ');
+  return `<section class="index"${dataLabel(label)}${alignAttrs(d.attributes ?? {})}>
     <h1 class="h1" style="margin: 0 0 var(--gap-title);">${titleHtml}</h1>
     ${bodyHtml}
   </section>`;
@@ -1221,113 +1430,6 @@ function renderDivider(d: ContainerDirective, label: string | undefined): string
   </section>`;
 }
 
-function renderStats(d: ContainerDirective, label: string | undefined): string {
-  const heading = findHeading(d.children);
-  const list = findFirstList(d.children);
-  const stats = findLeaves(d.children, 'stat');
-  const titleHtml = heading ? renderInline(heading.children) : '';
-  const listHtml = list ? renderBullets(list) : '';
-  const statsHtml = stats.map((s) => {
-    const value = renderInline(s.children as PhrasingContent[]);
-    const lbl = escHtml((s.attributes ?? {}).label ?? '');
-    const isPrimary = (s.attributes ?? {}).primary !== undefined;
-    const valStyle = 'font-size: 72px; font-weight: 700; letter-spacing: -0.03em;';
-    const valTag = isPrimary
-      ? `<div class="primary" style="${valStyle}">${value}</div>`
-      : `<div style="${valStyle}">${value}</div>`;
-    return `<div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--rule); padding-bottom: 20px;">
-          ${valTag}
-          <div style="font-size: 24px; color: var(--fg-muted); font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em; text-transform: uppercase;">${lbl}</div>
-        </div>`;
-  }).join('\n        ');
-  return `<section${dataLabel(label)}${alignAttrs(d.attributes ?? {})}>
-    <div class="split">
-      <div class="text-block">
-        <h1 class="h1" style="margin: 0 0 var(--gap-title);">${titleHtml}</h1>
-        ${listHtml}
-      </div>
-      <div class="media-block" style="display: grid; grid-template-columns: 1fr; gap: 24px;">
-        ${statsHtml}
-      </div>
-    </div>
-  </section>`;
-}
 
-function renderCharts(d: ContainerDirective, label: string | undefined): string {
-  const heading = findHeading(d.children);
-  const list = findFirstList(d.children);
-  const charts = findLeaves(d.children, 'chart');
-  const titleHtml = heading ? renderInline(heading.children) : '';
-  const listHtml = list ? renderBullets(list) : '';
-  const chartsHtml = charts.map((c) => {
-    const attrs = c.attributes ?? {};
-    const src = escAttr(attrs.src ?? '');
-    const caption = escHtml(attrs.caption ?? '');
-    const alt = escAttr(attrs.alt ?? '');
-    return `<div style="display: flex; flex-direction: column; gap: 8px;">
-          <div style="font-family: 'JetBrains Mono', monospace; font-size: 16px; color: var(--fg-muted); letter-spacing: 0.08em; text-transform: uppercase;">${caption}</div>
-          <img src="${src}" alt="${alt}" style="width: 100%; height: auto; border-radius: var(--radius); filter: contrast(1.05);" />
-        </div>`;
-  }).join('\n        ');
-  return `<section${dataLabel(label)}${alignAttrs(d.attributes ?? {})}>
-    <h1 class="h1" style="margin: 0 0 var(--gap-title);">${titleHtml}</h1>
-    <div class="split" style="align-items: center; gap: 60px;">
-      <div class="text-block" style="flex: 1;">
-        ${listHtml}
-      </div>
-      <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start;">
-        ${chartsHtml}
-      </div>
-    </div>
-  </section>`;
-}
 
-function renderDisclaimer(d: ContainerDirective, label: string | undefined): string {
-  const heading = findHeading(d.children);
-  const list = findFirstList(d.children);
-  const note = findLeaves(d.children, 'note')[0];
-  const titleHtml = heading ? renderInline(heading.children) : '';
-  if (list) {
-    for (const li of list.children) {
-      if (li.type !== 'listItem') continue;
-      const para = (li as ListItem).children[0];
-      if (para?.type !== 'paragraph') continue;
-      const head = (para as Paragraph).children[0];
-      const isMarker =
-        head?.type === 'textDirective' &&
-        ((head as TextDirective).name === 'muted' || (head as TextDirective).name === 'key');
-      if (!isMarker) {
-        (para as Paragraph).children.unshift({
-          type: 'textDirective',
-          name: 'muted',
-          attributes: {},
-          children: [],
-        } as any);
-      }
-    }
-  }
-  const listHtml = list ? renderBullets(list) : '';
-  const noteHtml = note
-    ? `<div style="margin-top: auto; padding-top: 32px; border-top: 1px solid var(--rule); font-family: 'JetBrains Mono', monospace; font-size: 22px; color: var(--fg-subtle); letter-spacing: 0.05em;">
-      * ${renderInline(note.children as PhrasingContent[])}
-    </div>`
-    : '';
-  return `<section${dataLabel(label)}${alignAttrs(d.attributes ?? {})}>
-    <h1 class="h1" style="margin: 0 0 var(--gap-title);">${titleHtml}</h1>
-    ${listHtml}
-    ${noteHtml}
-  </section>`;
-}
 
-function renderThanks(d: ContainerDirective, label: string | undefined, fm: Frontmatter): string {
-  const heading = findHeading(d.children);
-  const msg = heading ? renderInline(heading.children) : '감사합니다';
-  const author = escHtml(fm.author ?? '');
-  const id = escHtml(fm.id ?? '');
-  return `<section class="cover-dark"${dataLabel(label ?? '감사합니다')}>
-    <div style="display: flex; flex-direction: column; align-items: center; gap: 32px; text-align: center; margin-top: 60px;">
-      <h1 class="display" style="font-size: 140px; font-weight: 900; line-height: 1; margin: 0;">${msg}</h1>
-      <div style="font-size: 32px; margin-top: 24px;">${author} <span class="muted" style="font-family: 'JetBrains Mono', monospace; font-size: 26px; margin-left: 10px;">${id}</span></div>
-    </div>
-  </section>`;
-}

@@ -8,6 +8,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" />
+<script defer src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<script defer>document.addEventListener('DOMContentLoaded', () => { if (window.hljs) hljs.highlightAll(); });</script>
 
 <style>
   :root {
@@ -64,11 +67,13 @@
     position: relative;
     font-family: 'Apple SD Gothic Neo', 'Pretendard', 'Inter', sans-serif;
     letter-spacing: -0.01em;
+    word-break: keep-all;
+    overflow-wrap: break-word;
   }
 
   /* Type roles */
   .display { font-size: var(--type-display); font-weight: 800; line-height: 1.05; letter-spacing: -0.035em; }
-  .h1 { font-size: var(--type-h1); font-weight: 700; line-height: 1.1; letter-spacing: -0.025em; }
+  .h1 { font-size: var(--type-h1); font-weight: 900; line-height: 1.1; letter-spacing: -0.025em; }
   .h2 { font-size: var(--type-h2); font-weight: 600; line-height: 1.2; letter-spacing: -0.02em; }
   .body { font-size: var(--type-body); font-weight: 500; line-height: 1.45; }
   .caption { font-size: var(--type-caption); font-weight: 400; color: var(--fg-muted); letter-spacing: 0; }
@@ -349,6 +354,22 @@
   table.md-table tbody tr:nth-child(even) td { background: rgba(0, 0, 0, 0.02); }
   table.md-table .primary { color: var(--sb-color-primary-s500); font-weight: 700; }
 
+  /* ─ v2 :::chart embed — inside layouts ────────────────────── */
+  .chart-embed {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+  }
+  .chart-embed .chart-stage svg {
+    max-height: 60vh;
+  }
+  .chart-caption {
+    font-size: var(--type-caption);
+    color: var(--fg-muted);
+    text-align: center;
+  }
+
   /* ─ v2 :::chart / :::plot — SVG charts ────────────────────── */
   .chart-stage,
   .plot-stage {
@@ -385,6 +406,181 @@
   }
   .image-stage .image-caption {
     max-width: 1400px;
+  }
+
+  /* ─ v2 chrome — corner metadata overlay ────────────────────── */
+  .slide-chrome {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .slide-chrome .corner {
+    position: absolute;
+    font-size: 21px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--fg-muted);
+    opacity: 0.7;
+    max-width: 600px;
+  }
+  .slide-chrome .corner.tl { top: 48px;    left: 56px;  }
+  .slide-chrome .corner.tr { top: 48px;    right: 56px; text-align: right; }
+  .slide-chrome .corner.bl { bottom: 48px; left: 56px;  }
+  .slide-chrome .corner.br { bottom: 48px; right: 56px; text-align: right; }
+  .cover-dark .slide-chrome .corner,
+  .section-divider .slide-chrome .corner {
+    color: rgba(245, 240, 235, 0.5);
+  }
+
+  /* ─ v2 ::callout ───────────────────────────────────────────── */
+  .callout-block {
+    display: flex;
+    flex-direction: column;
+    gap: 72px;
+    align-items: center;
+    text-align: center;
+    padding: 48px 24px;
+    max-width: 1500px;
+    margin: 0 auto;
+  }
+  .callout-main {
+    font-size: 64px;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+  }
+  .callout-detail {
+    font-size: 28px;
+    color: var(--fg-muted);
+    line-height: 1.45;
+    max-width: 1100px;
+  }
+
+  /* ─ v2 ::note ──────────────────────────────────────────────── */
+  .note-block {
+    margin-top: 28px;
+    padding-top: 28px;
+    border-top: 1px solid var(--rule);
+    font-size: 22px;
+    color: var(--fg-subtle);
+    letter-spacing: 0;
+  }
+
+  /* ─ v2 ::video ─────────────────────────────────────────────── */
+  .video-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .video-block video,
+  .video-block iframe {
+    display: block;
+    height: 600px;
+    aspect-ratio: 16 / 9;
+    border: 0;
+    border-radius: var(--radius);
+    background: #000;
+  }
+  .video-caption {
+    font-size: var(--type-caption);
+    color: var(--fg-muted);
+    text-align: center;
+  }
+
+  /* ─ v2 ::stat — element-level (vertical: label on top, number below) ─── */
+  .stat-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 28px 0;
+  }
+  .stat-block + .stat-block {
+    margin-top: 16px;
+  }
+  .stat-block.reverse {
+    align-items: flex-end;
+    text-align: right;
+  }
+
+  /* :::stats wrapper — default is just a grouping container.
+     With {row} attribute, arranges stat-blocks horizontally. */
+  .stats-group.row {
+    display: flex;
+    flex-direction: row;
+    gap: 80px;
+    align-items: flex-start;
+  }
+  .stats-group.row .stat-block {
+    flex: 1;
+    padding: 0;
+  }
+  .stats-group.row .stat-block + .stat-block {
+    margin-top: 0;
+  }
+  .stat-block .stat-num {
+    font-size: 72px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .stat-block .stat-num.primary {
+    color: var(--sb-color-primary-s500);
+  }
+  .stat-block .stat-lbl {
+    font-size: 28px;
+    font-weight: 500;
+    color: var(--fg-muted);
+    letter-spacing: 0;
+  }
+
+  /* ─ v2 code fence ──────────────────────────────────────────── */
+  pre.code-block {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 24px;
+    line-height: 1.6;
+    padding: 32px 40px;
+    background: var(--bg-panel);
+    border-radius: var(--radius);
+    overflow-x: auto;
+    max-height: 60vh;
+    margin: 0 0 32px;
+  }
+  pre.code-block code {
+    font-family: inherit;
+    background: none;
+    padding: 0;
+    font-size: inherit;
+    color: var(--fg);
+  }
+  /* override hljs theme padding (we control via .code-block) */
+  pre.code-block code.hljs { padding: 0; background: none; }
+
+  /* ─ v2 :::index — TOC layout (numbered, bigger leading) ────── */
+  section.index ul.bullets {
+    counter-reset: tocitem;
+    gap: 36px;
+  }
+  section.index ul.bullets > li {
+    font-size: 40px;
+    font-weight: 700;
+    grid-template-columns: max-content 1fr;
+    column-gap: 24px;
+    align-items: center;
+  }
+  section.index ul.bullets > li::before {
+    content: counter(tocitem, decimal-leading-zero);
+    counter-increment: tocitem;
+    background: none;
+    height: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 30px;
+    color: var(--fg-muted);
+    letter-spacing: 0;
+    transform: translateY(-2px);
   }
 
   /* "Provided by Studio Baeks" watermark on the structurally-last slide

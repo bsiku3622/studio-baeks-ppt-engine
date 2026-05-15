@@ -1164,11 +1164,13 @@
         body > deck-stage { display: none !important; }
         #sb-presenter {
           position: fixed; inset: 0;
-          display: grid;
-          grid-template-rows: auto 1fr auto auto;
+          display: flex; flex-direction: column;
           gap: 14px; padding: 16px 22px;
           box-sizing: border-box;
         }
+        #sb-presenter .hdr,
+        #sb-presenter .previews,
+        #sb-presenter .footer { flex: 0 0 auto; }
         #sb-presenter .hdr {
           display: flex; justify-content: space-between; align-items: center;
           padding-bottom: 10px;
@@ -1215,12 +1217,18 @@
           z-index: 1;
         }
         #sb-presenter .notes-panel {
+          flex: 1 1 0; min-height: 0;
           background: rgba(255,255,255,0.04);
           border: 1px solid rgba(255,255,255,0.08);
           border-radius: 6px; padding: 14px 18px;
-          overflow-y: auto; max-height: 240px;
+          overflow-y: auto;
           line-height: 1.6; font-size: 15px; color: rgba(255,255,255,0.92);
         }
+        #sb-presenter .notes-panel::-webkit-scrollbar { width: 8px; }
+        #sb-presenter .notes-panel::-webkit-scrollbar-thumb {
+          background: rgba(255,255,255,0.18); border-radius: 4px;
+        }
+        #sb-presenter .notes-panel::-webkit-scrollbar-track { background: transparent; }
         #sb-presenter .notes-empty {
           color: rgba(255,255,255,0.4); font-style: italic; font-size: 13px;
         }

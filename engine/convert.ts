@@ -556,7 +556,10 @@ function isMediaOnly(children: any[]): boolean {
 }
 
 /** Render a generic block node (heading / list / paragraph / image-paragraph). */
-function renderGenericBlock(node: any): string {
+function renderGenericBlock(
+  node: any,
+  imgVariant: 'split' | 'single' = 'split',
+): string {
   switch (node.type) {
     case 'heading': {
       const h = node as Heading;
@@ -573,12 +576,12 @@ function renderGenericBlock(node: any): string {
       const p = node as Paragraph;
       // Image-only paragraph
       if (p.children.length === 1 && p.children[0].type === 'image') {
-        return renderImageBlock(p.children[0] as Image);
+        return renderImageBlock(p.children[0] as Image, true, imgVariant);
       }
       return `<p class="body" style="font-size: var(--type-body); margin: 0 0 16px;">${renderInline(p.children)}</p>`;
     }
     case 'image':
-      return renderImageBlock(node as Image);
+      return renderImageBlock(node as Image, true, imgVariant);
     case 'math':
       return renderBlock(node);
     case 'code': {
@@ -1323,9 +1326,19 @@ function renderCoverClose(d: ContainerDirective, label: string | undefined, fm: 
   </section>`;
 }
 
-function renderImageBlock(img: Image, isPhoto = true): string {
+function renderImageBlock(
+  img: Image,
+  isPhoto = true,
+  variant: 'split' | 'single' = 'split',
+): string {
   const filter = isPhoto ? 'grayscale(0.15) contrast(1.02)' : 'contrast(1.05)';
-  return `<img src="${escAttr(img.url)}" alt="${escAttr(img.alt ?? '')}" style="width: 100%; height: 100%; object-fit: cover; filter: ${filter};" />`;
+  // 캔버스 1920×1080, section 패딩 좌우 120 / 상하 100.
+  // split: (1920-240)/2 × (1080-200)*3/4 → 840 × 660
+  // single(단독 이미지 페이지): 콘텐츠 영역 전체 (1920-240) × (1080-200) → 1680 × 880
+  const limit = variant === 'single'
+    ? 'max-width: 1680px; max-height: 880px;'
+    : 'max-width: 840px; max-height: 660px;';
+  return `<img src="${escAttr(img.url)}" alt="${escAttr(img.alt ?? '')}" style="display: block; width: auto; height: auto; ${limit} object-fit: contain; margin: 0 auto; filter: ${filter};" />`;
 }
 
 function renderSplit(d: ContainerDirective, label: string | undefined): string {
@@ -1346,7 +1359,7 @@ function renderSplit(d: ContainerDirective, label: string | undefined): string {
     }
     const renderColumn = (children: any[]) => {
       const isMedia = isMediaOnly(children);
-      const html = children.map(renderGenericBlock).join('\n        ');
+      const html = children.map((c) => renderGenericBlock(c, 'split')).join('\n        ');
       const cls = isMedia ? 'media-block' : 'text-block';
       const style = isMedia ? ' style="min-height: 500px;"' : '';
       return `<div class="${cls}"${style}>\n        ${html}\n      </div>`;
@@ -1390,7 +1403,7 @@ function renderBulletsOnly(d: ContainerDirective, label: string | undefined): st
   // paragraphs, etc. The heading is hoisted to the slide H1 above.
   const bodyHtml = (d.children ?? [])
     .filter((c: any) => !(c.type === 'heading' && (c as Heading).depth === 1))
-    .map((c) => renderGenericBlock(c))
+    .map((c) => renderGenericBlock(c, 'single'))
     .filter((s) => s.trim().length > 0)
     .join('\n    ');
   return `<section${dataLabel(label)}${alignAttrs(d.attributes ?? {})}>

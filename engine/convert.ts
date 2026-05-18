@@ -1333,12 +1333,14 @@ function renderImageBlock(
 ): string {
   const filter = isPhoto ? 'grayscale(0.15) contrast(1.02)' : 'contrast(1.05)';
   // 캔버스 1920×1080, section 패딩 좌우 120 / 상하 100.
-  // split: (1920-240)/2 × (1080-200)*3/4 → 840 × 660
-  // single(단독 이미지 페이지): 콘텐츠 영역 전체 (1920-240) × (1080-200) → 1680 × 880
+  // 항상 컨테이너 폭(width:100%)에 묶어 컬럼/콘텐츠 밖으로 넘치지 않게 하고,
+  // 그 위에 절대 상한(max-width/height)을 캡으로 얹는다.
+  //  - split:  (1920-240)/2 × (1080-200)*3/4 → 840 × 660
+  //  - single: 콘텐츠 폭 (1920-240) × (제목 h1 공간 제외한 높이) → 1680 × 760
   const limit = variant === 'single'
-    ? 'max-width: 1680px; max-height: 880px;'
+    ? 'max-width: 1680px; max-height: 760px;'
     : 'max-width: 840px; max-height: 660px;';
-  return `<img src="${escAttr(img.url)}" alt="${escAttr(img.alt ?? '')}" style="display: block; width: auto; height: auto; ${limit} object-fit: contain; margin: 0 auto; filter: ${filter};" />`;
+  return `<img src="${escAttr(img.url)}" alt="${escAttr(img.alt ?? '')}" style="display: block; width: 100%; height: auto; ${limit} object-fit: contain; margin: 0 auto; filter: ${filter};" />`;
 }
 
 function renderSplit(d: ContainerDirective, label: string | undefined): string {

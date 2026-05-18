@@ -150,7 +150,13 @@
     gap: var(--gap-col);
   }
   .split > .text-block { flex: 1.05; min-width: 0; }
-  .split > .media-block { flex: 0.95; min-width: 0; }
+  .split > .media-block {
+    flex: 0.95;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
   .media-block.photo {
     aspect-ratio: 4 / 3;
     background-size: cover;

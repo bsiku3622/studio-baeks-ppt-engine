@@ -98,6 +98,74 @@ const assetMap = new Map();   // filename → dataURL
 let lastHtml = '';            // last rendered HTML (with original ./assets/ paths)
 let lastTitle = 'deck';
 
+// ─ Asset persistence (IndexedDB) ──────────────────
+// assetMap lives in memory only; without this, every uploaded image is
+// lost on reload while the MD body (localStorage) survives. base64 images
+// blow past localStorage's ~5MB quota, so we use IndexedDB instead.
+const ASSET_DB = 'sb-ppt-assets';
+const ASSET_STORE = 'assets';
+let assetDbPromise = null;
+
+function openAssetDb() {
+  if (assetDbPromise) return assetDbPromise;
+  assetDbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(ASSET_DB, 1);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(ASSET_STORE)) {
+        req.result.createObjectStore(ASSET_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return assetDbPromise;
+}
+
+function assetTx(mode, fn) {
+  return openAssetDb().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(ASSET_STORE, mode);
+    const store = tx.objectStore(ASSET_STORE);
+    const result = fn(store);
+    tx.oncomplete = () => resolve(result);
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+
+function persistAsset(name, val) {
+  assetTx('readwrite', (s) => s.put(val, name))
+    .catch((e) => console.warn('[assets] persist 실패:', name, e));
+}
+
+function unpersistAsset(name) {
+  assetTx('readwrite', (s) => s.delete(name))
+    .catch((e) => console.warn('[assets] delete 실패:', name, e));
+}
+
+// Load every persisted asset back into assetMap. Resolves even on failure
+// (private mode / quota) so the editor still works without persistence.
+async function loadPersistedAssets() {
+  try {
+    const entries = await assetTx('readonly', (s) => {
+      const out = [];
+      return new Promise((resolve, reject) => {
+        const cur = s.openCursor();
+        cur.onsuccess = () => {
+          const c = cur.result;
+          if (c) { out.push([c.key, c.value]); c.continue(); }
+          else resolve(out);
+        };
+        cur.onerror = () => reject(cur.error);
+      });
+    });
+    for (const [name, val] of entries) {
+      if (!assetMap.has(name)) assetMap.set(name, val);
+    }
+    assetCountEl.textContent = `assets: ${assetMap.size}`;
+  } catch (e) {
+    console.warn('[assets] 불러오기 실패:', e);
+  }
+}
+
 // ─ MD ↔ HTML pipeline ─────────────────────────────
 
 let convertTimer = null;
@@ -604,6 +672,7 @@ function handleFiles(files) {
     const reader = new FileReader();
     reader.onload = (e) => {
       assetMap.set(file.name, e.target.result);
+      persistAsset(file.name, e.target.result);
       assetCountEl.textContent = `assets: ${assetMap.size}`;
       if (lastHtml) preview.srcdoc = injectAssets(lastHtml);
       if (!modal.hidden) renderModal();
@@ -677,7 +746,9 @@ sampleBtn.addEventListener('click', async () => {
     while ((m = re.exec(md)) !== null) assetNames.add(m[1]);
     for (const name of assetNames) {
       if (!assetMap.has(name)) {
-        assetMap.set(name, `${location.origin}/example/assets/${name}`);
+        const url = `${location.origin}/example/assets/${name}`;
+        assetMap.set(name, url);
+        persistAsset(name, url);
       }
     }
     assetCountEl.textContent = `assets: ${assetMap.size}`;
@@ -747,15 +818,17 @@ function sanitizeFilename(s) {
 
 const SAVED_KEY = 'sb-ppt-md';
 const saved = localStorage.getItem(SAVED_KEY);
-if (saved) {
-  editor.value = saved;
-  updateHighlight();
-  convert();
-} else {
-  updateHighlight();
-}
+if (saved) editor.value = saved;
+updateHighlight();
 refreshNotesBox();
-updateUploadBtnState();
+
+// Restore persisted assets before the first convert so injectAssets() can
+// rewrite ./assets/ paths — otherwise uploaded images vanish on reload.
+(async () => {
+  await loadPersistedAssets();
+  if (saved) convert();
+  updateUploadBtnState();
+})();
 
 // Auto-save to localStorage
 editor.addEventListener('input', () => {
@@ -906,6 +979,7 @@ modalGrid.addEventListener('click', (e) => {
   } else if (action === 'delete') {
     if (!confirm(`${name} 삭제? (MD 본문은 안 건드립니다)`)) return;
     assetMap.delete(name);
+    unpersistAsset(name);
     assetCountEl.textContent = `assets: ${assetMap.size}`;
     if (lastHtml) preview.srcdoc = injectAssets(lastHtml);
     renderModal();
@@ -921,6 +995,7 @@ modalGrid.addEventListener('click', (e) => {
       const reader = new FileReader();
       reader.onload = (le) => {
         assetMap.set(name, le.target.result);
+        persistAsset(name, le.target.result);
         assetCountEl.textContent = `assets: ${assetMap.size}`;
         if (lastHtml) preview.srcdoc = injectAssets(lastHtml);
         renderModal();

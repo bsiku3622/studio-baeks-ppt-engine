@@ -1336,9 +1336,9 @@ function renderImageBlock(
   // 항상 컨테이너 폭(width:100%)에 묶어 컬럼/콘텐츠 밖으로 넘치지 않게 하고,
   // 그 위에 절대 상한(max-width/height)을 캡으로 얹는다.
   //  - split:  (1920-240)/2 × (1080-200)*3/4 → 840 × 660
-  //  - single: 콘텐츠 폭 (1920-240) × (제목 h1 공간 제외한 높이) → 1680 × 760
+  //  - single: 콘텐츠 폭 (1920-240) × (제목 h1 공간 제외한 높이) → 1680 × 640
   const limit = variant === 'single'
-    ? 'max-width: 1680px; max-height: 760px;'
+    ? 'max-width: 1680px; max-height: 640px;'
     : 'max-width: 840px; max-height: 660px;';
   return `<img src="${escAttr(img.url)}" alt="${escAttr(img.alt ?? '')}" style="display: block; width: 100%; height: auto; ${limit} object-fit: contain; margin: 0 auto; filter: ${filter};" />`;
 }
